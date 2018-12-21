@@ -166,10 +166,13 @@ class Darknet(nn.Module):
            outputs = {}
 
            write = 0
+           if CUDA:
+                 x = x.cuda()
            for i, module in enumerate(modules):
                  module_type = (module["type"])
 
                  if module_type == "convolutional" or module_type == "upsample":
+                       #print (i, self.module_list[i], x)
                        x = self.module_list[i](x)
        
                  elif module_type == "route":
@@ -203,7 +206,7 @@ class Darknet(nn.Module):
                        num_classes = int(module["classes"])
 
                        #Transform
-                       x = x.data
+                       #x = x.data
                        x = predict_transform(x, inp_dim, anchors, num_classes, CUDA)
                        if not write:
                              detections = x
@@ -300,7 +303,9 @@ class Darknet(nn.Module):
 model = Darknet("cfg/yolov3.cfg")
 inp = get_test_input()
 #model.load_weights("yolov3.weights")
-pred = model(inp,0)#torch.cuda.is_available())
+model = model.cuda()
+
+pred = model(inp, torch.cuda.is_available())#torch.cuda.is_available())
 #torch.save(pred, 'tensor.pt')
 #buffer = io.BytesIO()
 #torch.save(x, buffer)
@@ -315,8 +320,8 @@ learning_rate = 1e-4
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 for t in range(1000):
-     y_pred1 = model(inp, 0)
-     y_pred1.requires_grad=True
+     y_pred1 = model(inp, torch.cuda.is_available())
+     #y_pred1.requires_grad=True
      loss = loss_fn(y_pred1.cuda(), pred1.cuda())
      print(t, loss.item())
 

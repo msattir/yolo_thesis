@@ -216,6 +216,81 @@ class Darknet(nn.Module):
            return detections
 
 
+
+     def load_weights(self, weightsfile):
+          fp = open(weightsfile, "rb")
+          header = np.fromfile(fp, dtype = np.int32, count=5)
+          self.header = torch.from_numpy(header)
+          self.seen = self.header[3]
+     
+          weights = np.fromfile(fp, dtype = np.float32)
+          ptr = 0
+          for i in range(len(self.module_list)):
+                module_type = self.blocks[i+1]["type"]
+     
+                if module_type == "convolutional":
+                      model = self.module_list[i]
+                      try:
+                            batch_normalize = int(self.blocks[i+1]["batch_normalize"])
+                      except:
+                            batch_normalize = 0
+                    
+                      conv = model[0]
+                      
+                      if (batch_normalize):
+                            bn = model[1]
+     
+                            #Get the number of weights of Batch Norm Layer
+                            num_bn_biases = bn.bias.numel()
+     
+                            #Load the weights
+                            bn_biases = torch.from_numpy(weights[ptr:ptr + num_bn_biases])
+                            ptr += num_bn_biases
+     
+                            bn_weights = torch.from_numpy(weights[ptr: ptr + num_bn_biases])
+                            ptr  += num_bn_biases
+     
+                            bn_running_mean = torch.from_numpy(weights[ptr: ptr + num_bn_biases])
+                            ptr  += num_bn_biases
+     
+                            bn_running_var = torch.from_numpy(weights[ptr: ptr + num_bn_biases])
+                            ptr  += num_bn_biases
+     
+                            #Cast the loaded weights into dims of model weights. 
+                            bn_biases = bn_biases.view_as(bn.bias.data)
+                            bn_weights = bn_weights.view_as(bn.weight.data)
+                            bn_running_mean = bn_running_mean.view_as(bn.running_mean)
+                            bn_running_var = bn_running_var.view_as(bn.running_var)
+     
+                            #Copy the data to model
+                            bn.bias.data.copy_(bn_biases)
+                            bn.weight.data.copy_(bn_weights)
+                            bn.running_mean.copy_(bn_running_mean)
+                            bn.running_var.copy_(bn_running_var)
+      
+                      else:
+                            #Number of biases
+                            num_biases = conv.bias.numel()
+     
+                            #Load the weights
+                            conv_biases = torch.from_numpy(weights[ptr: ptr + num_biases])
+                            ptr = ptr + num_biases
+     
+                            #reshape the loaded weights according to the dims of the model weights
+                            conv_biases = conv_biases.view_as(conv.bias.data)
+     
+                            #Finally copy the data
+                            conv.bias.data.copy_(conv_biases)
+     
+                      #Let us load the weights for the Convolutional layers
+                      num_weights = conv.weight.numel()
+                      
+                      #Do the same as above for weights
+                      conv_weights = torch.from_numpy(weights[ptr:ptr+num_weights])
+                      ptr = ptr + num_weights
+                      
+                      conv_weights = conv_weights.view_as(conv.weight.data)
+                      conv.weight.data.copy_(conv_weights)
            
                                 
 
@@ -224,5 +299,33 @@ class Darknet(nn.Module):
 
 model = Darknet("cfg/yolov3.cfg")
 inp = get_test_input()
-pred = model(inp, torch.cuda.is_available())
-print (pred)
+#model.load_weights("yolov3.weights")
+pred = model(inp,0)#torch.cuda.is_available())
+#torch.save(pred, 'tensor.pt')
+#buffer = io.BytesIO()
+#torch.save(x, buffer)
+
+pred1 = torch.load('tensor.pt')
+#with open('tensor.pt') as f:
+#     buffer = io.BytesIO(f.red())
+
+loss_fn = torch.nn.MSELoss(reduction='sum')
+
+learning_rate = 1e-4
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+for t in range(1000):
+     y_pred1 = model(inp, 0)
+     y_pred1.requires_grad=True
+     loss = loss_fn(y_pred1.cuda(), pred1.cuda())
+     print(t, loss.item())
+
+     optimizer.zero_grad()
+     loss.backward()
+     optimizer.step()
+
+
+w_pred = write_results(y_pred, 0.5, 80, 0.4)
+w_pred1 = write_results(pred1, 0.5, 80, 0.4)
+print (w_pred)
+print (w_pred1)

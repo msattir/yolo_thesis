@@ -319,7 +319,7 @@ loss_fn = torch.nn.MSELoss(reduction='sum')
 learning_rate = 1e-4
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-for t in range(1000):
+for t in range(10000):
      y_pred1 = model(inp, torch.cuda.is_available())
      #y_pred1.requires_grad=True
      loss = loss_fn(y_pred1.cuda(), pred1.cuda())
@@ -330,7 +330,7 @@ for t in range(1000):
      optimizer.step()
 
 
-w_pred = write_results(y_pred, 0.5, 80, 0.4)
+w_pred = write_results(y_pred1.data, 0.5, 80, 0.4)
 w_pred1 = write_results(pred1, 0.5, 80, 0.4)
 print (w_pred)
 print (w_pred1)

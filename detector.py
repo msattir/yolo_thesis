@@ -61,7 +61,7 @@ if train_dir is None:
 else:
      training = True
      images = train_dir #Update images dir to training images
-     num_iter = args.num_iter
+     num_iter = int(args.num_iter)
      print ("Training Enabled")
 
 model.net_info["height"] = args.reso
@@ -73,10 +73,6 @@ assert inp_dim > 32
 #Enable CUDA if available
 if CUDA:
      model.cuda()
-
-if not training:
-     model.eval()
-
 
 read_dir = time.time()
 
@@ -115,54 +111,122 @@ if batch_size != 1:
 ##################
 ### Detection Loop
 ##################
-
-write = 0
-start_det_loop = time.time()
-
-for i, batch in enumerate(im_batches):
-     #Load Image
-     start = time.time()
-     if CUDA:
-           batch = batch.cuda()
-     with torch.no_grad():
-           prediction = model(Variable(batch), CUDA)
-     prediction = write_results(prediction, confidence, num_classes, nms_conf = nms_thresh)
-     print (prediction)
-     end = time.time()
+if not training:
+     model.eval()
+     write = 0
+     start_det_loop = time.time()
      
-     if type(prediction) == int:
-           for im_num, image in enumerate(imlist[i*batch_size: min((i+1)*batch_size, len(imlist))]):
+     for i, batch in enumerate(im_batches):
+           #Load Image
+           start = time.time()
+           if CUDA:
+                 batch = batch.cuda()
+           with torch.no_grad():
+                 prediction = model(Variable(batch), CUDA)
+           prediction = write_results(prediction, confidence, num_classes, nms_conf = nms_thresh)
+           print (prediction)
+           end = time.time()
+           
+           if type(prediction) == int:
+                 for im_num, image in enumerate(imlist[i*batch_size: min((i+1)*batch_size, len(imlist))]):
+                       im_id = i*batch_size + im_num
+                       print("{0:20s} predicted in {1:6.3f} seconds".format(image.split("/")[-1], (end - start)/batch_size))
+                       print("{0:20s} {1:s}".format("Objects Detected:", ""))
+                       print("----------------------------------------------------------")
+                 continue
+      
+           prediction[:,0] += i*batch_size
+           if not write:
+                 output = prediction
+                 write = 1
+      
+           else:
+                 output = torch.cat((output, prediction))
+      
+           for im_num, image in enumerate(imlist[i*batch_size: min ((i+1)*batch_size, len(imlist))]):
                  im_id = i*batch_size + im_num
+                 objs = [classes[int(x[-1])] for x in output if int(x[0]) == im_id]
                  print("{0:20s} predicted in {1:6.3f} seconds".format(image.split("/")[-1], (end - start)/batch_size))
-                 print("{0:20s} {1:s}".format("Objects Detected:", ""))
+                 print("{0:20s} {1:s}".format("Objects Detected:", " ".join(objs)))
                  print("----------------------------------------------------------")
-           continue
+      
+           if CUDA:
+                 torch.cuda.synchronize()
+      
+      
+     
+     try:
+           output
+     except NameError:
+           print ("No detections made")
+           exit()
 
-     prediction[:,0] += i*batch_size
-     if not write:
-           output = prediction
-           write = 1
+##########################
+## Trainig Loop #########
+#########################
 
-     else:
-           output = torch.cat((output, prediction))
+else:
+     write = 0 #Concatinate predictions
+     start_det_loop = time.time()
 
-     for im_num, image in enumerate(imlist[i*batch_size: min ((i+1)*batch_size, len(imlist))]):
-           im_id = i*batch_size + im_num
-           objs = [classes[int(x[-1])] for x in output if int(x[0]) == im_id]
-           print("{0:20s} predicted in {1:6.3f} seconds".format(image.split("/")[-1], (end - start)/batch_size))
-           print("{0:20s} {1:s}".format("Objects Detected:", " ".join(objs)))
-           print("----------------------------------------------------------")
+     loss_fn = torch.nn.MSELoss(reduction='sum')
+     learning_rate =1e-4
+     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-     if CUDA:
-           torch.cuda.synchronize()
+     for i, batch in enumerate(im_batches): 
+           if CUDA:
+                 batch = batch.cuda()
+           #for now gt is pred1
+           gt_pred1 = torch.load('tensor.pt')
+           if CUDA:
+                 gt_pred1 = gt_pred1.cuda()
+           
+           for t in range(num_iter):
+                 y_pred1 = model(batch, CUDA)
+                 loss = loss_fn(y_pred1, gt_pred1)
+                 print (t, loss.item())
+               
+                 optimizer.zero_grad()
+                 loss.backward()
+                 optimizer.step()
 
-
-
-try:
-     output
-except NameError:
-     print ("No detections made")
-     exit()
+           prediction = write_results(y_pred1.data, confidence, num_classes, nms_conf = nms_thresh)
+           print (prediction)
+           end = time.time()
+                           
+           if type(prediction) == int:
+                 for im_num, image in enumerate(imlist[i*batch_size: min((i+1)*batch_size, len(imlist))]):
+                       im_id = i*batch_size + im_num
+                       print("{0:20s} predicted in {1:6.3f} seconds".format(image.split("/")[-1], (end - start)/batch_size))
+                       print("{0:20s} {1:s}".format("Objects Detected:", ""))
+                       print("----------------------------------------------------------")
+                 continue
+      
+           prediction[:,0] += i*batch_size
+           if not write:
+                 output = prediction
+                 write = 1
+      
+           else:
+                 output = torch.cat((output, prediction))
+      
+           for im_num, image in enumerate(imlist[i*batch_size: min ((i+1)*batch_size, len(imlist))]):
+                 im_id = i*batch_size + im_num
+                 objs = [classes[int(x[-1])] for x in output if int(x[0]) == im_id]
+                 print("{0:20s} predicted in {1:6.3f} seconds".format(image.split("/")[-1], (end - start)/batch_size))
+                 print("{0:20s} {1:s}".format("Objects Detected:", " ".join(objs)))
+                 print("----------------------------------------------------------")
+      
+           if CUDA:
+                 torch.cuda.synchronize()
+      
+      
+      
+     try:
+           output
+     except NameError:
+           print ("No detections made")
+           exit()
 
 im_dim_list = torch.index_select(im_dim_list, 0, output[:,0].long())
 scaling_factor = torch.min(416/im_dim_list,1)[0].view(-1,1)

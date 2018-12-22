@@ -124,9 +124,10 @@ for i, batch in enumerate(im_batches):
      start = time.time()
      if CUDA:
            batch = batch.cuda()
-   
-     prediction = model(Variable(batch, volatile=True), CUDA)
+     with torch.no_grad():
+           prediction = model(Variable(batch), CUDA)
      prediction = write_results(prediction, confidence, num_classes, nms_conf = nms_thresh)
+     print (prediction)
      end = time.time()
      
      if type(prediction) == int:

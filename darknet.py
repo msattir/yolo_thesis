@@ -50,12 +50,12 @@ class DetectionLayer(nn.Module):
            super(DetectionLayer, self).__init__()
            self.anchors = anchors
 
-     def forward(self, x, inp_dim, num_classes, confidence):
-           x = x.data
-           global CUDA
-           prediction = x
-           prediction = predict_transform(prediction, inp_dim, self.anchors, num_clases, confidence, CUDA)
-           return prediciton
+    # def forward(self, x, inp_dim, num_classes, confidence):
+    #       x = x.data
+    #       global CUDA
+    #       prediction = x
+    #       prediction = predict_transform(prediction, inp_dim, self.anchors, num_clases, confidence, CUDA)
+    #       return prediciton
 
 
 def create_modules(blocks):
@@ -103,7 +103,7 @@ def create_modules(blocks):
            #Upsample Layer
            elif x["type"] == "upsample":
                  stride = int(x["stride"])
-                 upsample = nn.Upsample(scale_factor=2, mode="bilinear")
+                 upsample = nn.Upsample(scale_factor=2, mode="nearest")
                  module.add_module("upsample_{}".format(index),upsample)
 
            #Routing Layer
@@ -207,7 +207,7 @@ class Darknet(nn.Module):
 
                        #Transform
                        #x = x.data
-                       x = predict_transform(x.data, inp_dim, anchors, num_classes, CUDA)
+                       x = predict_transform(x, inp_dim, anchors, num_classes, CUDA)
                        if not write:
                              detections = x
                              write = 1

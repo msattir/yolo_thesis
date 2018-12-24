@@ -20,6 +20,19 @@ def letterbox_image(img, inp_dim):
      return canvas
 
 
+def letterbox_image2(img, inp_dim):
+     #Resize image maintaining aspect ration but padding grey cells and return resized_image size
+
+     img_w, img_h = img.shape[1], img.shape[0]
+     w, h = inp_dim
+     new_w = int(img_w*min(w/img_w, h/img_h))
+     new_h = int(img_h*min(w/img_w, h/img_h))
+     resized_image = cv2.resize(img, (new_w, new_h), interpolation = cv2.INTER_CUBIC)
+     return resized_image.shape
+
+
+
+
 def prep_image(img, inp_dim):
      img = letterbox_image(img, (inp_dim, inp_dim))
      img = img[:,:,::-1].transpose((2,0,1)).copy()

@@ -13,7 +13,7 @@ from darknet import Darknet
 import pickle as pkl
 import pandas as pd
 import random
-
+from preprocess import gt_pred
 
 def load_classes(fileName):
      fp = open(fileName, "r")
@@ -84,6 +84,21 @@ except NotADirectoryError:
 except FileNotFoundError:
      print ("Input Dir not found {}".format(images))
      exit()
+
+if training:
+     labels = images.replace('images', 'labels')
+      
+     try:
+          labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
+     except NotADirectoryError:
+          labellist = []
+          labellist.append(osp.join(osp.realpath('.'), labels))
+     except FileNotFoundError:
+          print ("Labels Dir not found {}".format(labels))
+          exit()
+
+     label_tensor = gt_pred(imlist, labellist, CUDA,  2)
+
 
 if not os.path.exists(args.det):
      os.makedirs(args.det)
@@ -177,7 +192,7 @@ else:
            if CUDA:
                  batch = batch.cuda()
            #for now gt is pred1
-           gt_pred1 = torch.load('tensor.pt')
+           gt_pred1 = label_tensor#torch.load('tensor.pt')
            if CUDA:
                  gt_pred1 = gt_pred1.cuda()
            

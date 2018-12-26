@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from utils import letterbox_image2
 import torch
-from utils import predict_transform
+from utils import gt_predict_transform
 
 def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
      anchors = [(10,13),  (16,30),  (33,23),  (30,61),  (62,45),  (59,119),  (116,90),  (156,198),  (373,326)]
@@ -46,7 +46,8 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
      x = t_pred.unsqueeze(0)
      if CUDA:
            x = x.cuda()
-     return (predict_transform(x, 416, anc_masks, num_classes, CUDA))
+     ret = gt_predict_transform(x, 416, anc_masks, num_classes, CUDA)
+     return(ret)
 
 
 
@@ -86,12 +87,12 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            all_masks = [[6,7,8], [3,4,5], [0,1,2]]
            w_pred = 0
            for f, m in zip (filts, all_masks):
-                 p=y_pred(f, m, det2, [416, 416], CUDA, num_classes)
+                 pred_1=y_pred(f, m, det2, [416, 416], CUDA, num_classes)
                  if w_pred == 0:
-                       pred = p
+                       pred = pred_1
                        w_pred = 1
                  else:
-                       pred = torch.cat((pred, p),1)
+                       pred = torch.cat((pred, pred_1),1)
            if write == 0:
                  output = pred
                  #output = output.unsqueeze(0)

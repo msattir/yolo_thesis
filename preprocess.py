@@ -1,7 +1,7 @@
 from __future__ import division
 import cv2
 import numpy as np
-from utils import letterbox_image2
+from utils import letterbox_image2, letterbox_image3
 import torch
 from utils import gt_predict_transform
 
@@ -66,7 +66,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            det = np.genfromtxt(lb, delimiter=',')
            
            canvas_shape = []
-           canvas_shape  = letterbox_image2(img,[416, 416])
+           img4, canvas_shape  = letterbox_image3(img,[416, 416])
+           img2 = img4.astype(np.uint8)
            
            x_fact = canvas_shape[0]/img.shape[0]
            y_fact = canvas_shape[1]/img.shape[1]
@@ -76,12 +77,19 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
            det[:,3] = det[:,3]*x_fact
            
+           
+           det[:,2] = det[:,0]+det[:,2]
+           det[:,3] = det[:,1]+det[:,3]
+           
+           det = det.astype(int)
            det2 = det.copy()
-           
-           det2[:,0] = det2[:,0]+det2[:,2]/2
-           det2[:,1] = det2[:,1]+det2[:,3]/2
-           
-           det2 = det2.astype(int)
+        
+           #for i in range(0,det.shape[0]):
+           #      cv2.rectangle(img2, (det[i,0],det[i,1]), (det[i,2],det[i,3]), (0, 255, 0), 2)
+
+           #cv2.imshow('image', img2)
+           #cv2.waitKey(0)
+
         
            filts = [[13,13], [26,26], [52,52]]
            all_masks = [[6,7,8], [3,4,5], [0,1,2]]

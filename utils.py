@@ -30,7 +30,18 @@ def letterbox_image2(img, inp_dim):
      resized_image = cv2.resize(img, (new_w, new_h), interpolation = cv2.INTER_CUBIC)
      return resized_image.shape
 
+def letterbox_image3(img, inp_dim):
+  #Resize image maintaining aspect ration but padding grey cells and return resized_image size
 
+  img_w, img_h = img.shape[1], img.shape[0]
+  w, h = inp_dim
+  new_w = int(img_w*min(w/img_w, h/img_h))
+  new_h = int(img_h*min(w/img_w, h/img_h))
+  resized_image = cv2.resize(img, (new_w, new_h), interpolation = cv2.INTER_CUBIC)
+ # resized = (resized_image[:,:,0]+resized_image[:,:,1]+resized_image[:,:,2])//3
+  canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
+  canvas[(h-new_h)//2:(h-new_h)//2+new_h, (w-new_w)//2:(w-new_w)//2+new_w, :] = resized_image
+  return canvas, resized_image.shape
 
 
 def prep_image(img, inp_dim):

@@ -48,7 +48,7 @@ CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
 
 num_classes = 80
-classes = load_classes("data/coco.names")
+classes = load_classes("data/bosch.names")
 training = False
 
 print ("Loading Network")
@@ -185,7 +185,7 @@ else:
      start_det_loop = time.time()
 
      loss_fn = torch.nn.MSELoss(reduction='sum')
-     learning_rate =1e-4
+     learning_rate =1e-3
      optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
      for i, batch in enumerate(im_batches): 
@@ -205,7 +205,7 @@ else:
                  loss.backward()
                  optimizer.step()
 
-           prediction = write_results(y_pred1.data, confidence, num_classes, nms_conf = nms_thresh)
+           prediction = write_results(gt_pred1.data, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
            end = time.time()
                            
@@ -244,7 +244,7 @@ else:
            exit()
 
 im_dim_list = torch.index_select(im_dim_list, 0, output[:,0].long())
-scaling_factor = torch.min(416/im_dim_list,1)[0].view(-1,1)
+scaling_factor = torch.min(inp_dim/im_dim_list,1)[0].view(-1,1)
 
 output[:,[1,3]] -= (inp_dim - scaling_factor*im_dim_list[:,0].view(-1,1))/2
 output[:,[2,4]] -= (inp_dim - scaling_factor*im_dim_list[:,1].view(-1,1))/2

@@ -95,17 +95,17 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
           # cv2.imshow('image', img2)
           # cv2.waitKey(0)
 
-           for i in range(0,det2.shape[0]):
-                 cv2.circle(img2, (det2[i,0],det2[i,1]), 1, (255, 0, 0), 2)
+          # for i in range(0,det2.shape[0]):
+          #       cv2.circle(img2, (det2[i,0],det2[i,1]), 1, (255, 0, 0), 2)
 
-           for i in range(0,det2.shape[0]):
-                 cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
+          # for i in range(0,det2.shape[0]):
+          #       cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
 
-           for i in range(0,det2.shape[0]):
-                 cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
+          # for i in range(0,det2.shape[0]):
+          #       cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
 
-           cv2.imshow('image', img2)
-           cv2.waitKey(0)
+          # cv2.imshow('image', img2)
+          # cv2.waitKey(0)
 
         
            filts = [[13,13], [26,26], [52,52]]

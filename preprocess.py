@@ -37,7 +37,7 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
                        m = np.argmin(abs(anc_masks_aspect-im_aspect))
                        start = m*(5+num_classes)
                        end = start+(5+num_classes)
-                       predictions[start:end,i,j] = np.concatenate((np.array([cx, cy, det[loc[0],2], det[loc[0],3], 1.0]), class_prob))
+                       predictions[start:end,i,j] = np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0]), class_prob))
                        #print (predictions[p,:])
                  p=p+1
      
@@ -80,18 +80,32 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
            det[:,3] = det[:,3]*x_fact
            
-           
-           det[:,2] = det[:,0]+det[:,2]
-           det[:,3] = det[:,1]+det[:,3]
-           
-           det = det.astype(int)
            det2 = det.copy()
+           det2[:,0] = det2[:,0]+det2[:,2]/2
+           det2[:,1] = det2[:,1]+det2[:,3]/2
+           
+           det2[:,2] = det[:,2]
+           det2[:,3] = det[:,3]
+           
+           det2 = det2.astype(int) 
         
-           #for i in range(0,det.shape[0]):
-           #      cv2.rectangle(img2, (det[i,0],det[i,1]), (det[i,2],det[i,3]), (0, 255, 0), 2)
+          # for i in range(0,det.shape[0]):
+          #       cv2.rectangle(img2, (det[i,0],det[i,1]), (det[i,2],det[i,3]), (0, 255, 0), 2)
 
-           #cv2.imshow('image', img2)
-           #cv2.waitKey(0)
+          # cv2.imshow('image', img2)
+          # cv2.waitKey(0)
+
+           for i in range(0,det2.shape[0]):
+                 cv2.circle(img2, (det2[i,0],det2[i,1]), 1, (255, 0, 0), 2)
+
+           for i in range(0,det2.shape[0]):
+                 cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
+
+           for i in range(0,det2.shape[0]):
+                 cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
+
+           cv2.imshow('image', img2)
+           cv2.waitKey(0)
 
         
            filts = [[13,13], [26,26], [52,52]]

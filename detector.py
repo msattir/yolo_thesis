@@ -47,8 +47,8 @@ start = 0
 CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
 
-num_classes = 80
-classes = load_classes("data/coco.names")
+num_classes = 2
+classes = load_classes("data/bosch.names")
 training = False
 
 print ("Loading Network")
@@ -88,7 +88,7 @@ except FileNotFoundError:
 imlist.sort()
 
 if training:
-     labels = images.replace('images', 'labels')
+     labels = images.replace('images', 'labels').replace('.png', '.txt').replace('I1_', 'L1_')
       
      try:
           labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
@@ -105,6 +105,7 @@ if training:
      for mi, bl in zip(imlist, labellist):
          label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
      assert all(label_test) #Check to see if all labels correspond to images
+     lab_batches = label_tensor.unsqueeze(0)
      
 
      
@@ -200,29 +201,38 @@ else:
      start_det_loop = time.time()
 
      loss_fn = torch.nn.MSELoss(reduction='sum')
-     learning_rate =1e-3
+     learning_rate =1e-4
      optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+     epoc = int(args.num_iter)
 
-     for i, (batch, label) in enumerate(zip(im_batches, lab_batches)): 
+     for e in range(epoc // batch_size): 
+           
+           for t in range(2):
+                 for batch, label in zip(im_batches, lab_batches):
+                       if CUDA:
+                             batch = batch.cuda()
+                             gt_pred1 = label.cuda()
+           
+                       y_pred1 = model(batch, CUDA)
+                       loss = loss_fn(y_pred1, gt_pred1)
+                       print (t, loss.item())
+               
+                       optimizer.zero_grad()
+                       loss.backward()
+                       optimizer.step()
+          # print ("Epoc {}".format(e))
+
+     for i, batch in enumerate(im_batches):
+           #Load Image
+           start = time.time()
            if CUDA:
                  batch = batch.cuda()
-           #for now gt is pred1
-           gt_pred1 = label#torch.load('tensor.pt')
-           if CUDA:
-                 gt_pred1 = gt_pred1.cuda()
-           
-           for t in range(num_iter):
-                 y_pred1 = model(batch, CUDA)
-                 loss = loss_fn(y_pred1, gt_pred1)
-                 print (t, loss.item())
-               
-                 optimizer.zero_grad()
-                 loss.backward()
-                 optimizer.step()
-
-           prediction = write_results(gt_pred1.data, confidence, num_classes, nms_conf = nms_thresh)
+           with torch.no_grad():
+                 prediction = model(Variable(batch), CUDA)
+           prediction = write_results(prediction.data, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
            end = time.time()
+
                            
            if type(prediction) == int:
                  for im_num, image in enumerate(imlist[i*batch_size: min((i+1)*batch_size, len(imlist))]):

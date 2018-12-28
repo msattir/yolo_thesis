@@ -113,7 +113,7 @@ def gt_predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      prediction = prediction.transpose(1,2).contiguous()
      prediction = prediction.view(batch_size, grid_size*grid_size*num_anchors, bbox_attrs)
 
-     anchors = [(a[0]/stride, a[1]/stride) for a in anchors]
+     #anchors = [(a[0]/stride, a[1]/stride) for a in anchors]
 
      #Sigmoid center_x,y and objectness score
      #prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
@@ -121,18 +121,18 @@ def gt_predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      #prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
 
      #Center offsets
-     grid = np.arange(grid_size)
-     a, b = np.meshgrid(grid, grid)
+     #grid = np.arange(grid_size)
+     #a, b = np.meshgrid(grid, grid)
 
-     x_offset = torch.FloatTensor(a).view(-1,1)
-     y_offset = torch.FloatTensor(b).view(-1,1)
+     #x_offset = torch.FloatTensor(a).view(-1,1)
+     #y_offset = torch.FloatTensor(b).view(-1,1)
 
-     if CUDA:
-           x_offset = x_offset.cuda()
-           y_offset = y_offset.cuda()
+     #if CUDA:
+     #      x_offset = x_offset.cuda()
+     #      y_offset = y_offset.cuda()
 
-     x_y_offset = torch.cat((x_offset,y_offset),1).repeat(1,num_anchors).view(-1,2).unsqueeze(0)
-     prediction[:,:,:2] += x_y_offset
+     #x_y_offset = torch.cat((x_offset,y_offset),1).repeat(1,num_anchors).view(-1,2).unsqueeze(0)
+     #prediction[:,:,:2] += x_y_offset
  
      prediction[:,:,0] *= prediction[:,:,4] #Zero out non prediction boxes
      prediction[:,:,1] *= prediction[:,:,4] #Zero out non prediction boxes
@@ -149,7 +149,7 @@ def gt_predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      #prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
 
      #prediction[:,:,5: 5+num_classes] = torch.sigmoid((prediction[:,:,5:5+num_classes]))
-     prediction[:,:,:2] *= stride
+     #prediction[:,:,:2] *= stride
 
      return prediction
 

@@ -63,7 +63,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
      for index, (im, lb) in enumerate(zip(imlist, labellist)):
 
            img = cv2.imread(im)
-           det = np.genfromtxt(lb, delimiter=',')
+           lab = im.replace('images', 'labels').replace('.png', '.txt').replace('I1', 'L1') 
+           det = np.genfromtxt(lab, delimiter=',')
            
            canvas_shape = []
            img4, canvas_shape  = letterbox_image3(img,[416, 416])
@@ -72,6 +73,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            x_fact = canvas_shape[0]/img.shape[0]
            y_fact = canvas_shape[1]/img.shape[1]
            
+           if det.ndim == 1:
+                 det = det.reshape(1,-1) 
            det[:,0] = det[:,0]*y_fact
            det[:,2] = det[:,2]*y_fact
            det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
@@ -106,7 +109,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
                  #output = output.unsqueeze(0)
                  write = 1
            else:
-                 output[index, :,:] = pred
+                 output = torch.cat((output, pred))
            
      return (output)
 

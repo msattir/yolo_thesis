@@ -48,7 +48,7 @@ CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
 
 num_classes = 80
-classes = load_classes("data/bosch.names")
+classes = load_classes("data/coco.names")
 training = False
 
 print ("Loading Network")
@@ -85,6 +85,8 @@ except FileNotFoundError:
      print ("Input Dir not found {}".format(images))
      exit()
 
+imlist.sort()
+
 if training:
      labels = images.replace('images', 'labels')
       
@@ -97,7 +99,15 @@ if training:
           print ("Labels Dir not found {}".format(labels))
           exit()
 
+     labellist.sort()
      label_tensor = gt_pred(imlist, labellist, CUDA,  2)
+     label_test = []
+     for mi, bl in zip(imlist, labellist):
+         label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
+     assert all(label_test) #Check to see if all labels correspond to images
+     
+
+     
 
 
 if not os.path.exists(args.det):
@@ -121,6 +131,10 @@ if (len(im_dim_list) % batch_size):
 if batch_size != 1:
      num_batches = len(imlist) // batch_size + leftover
      im_batches = [torch.cat((im_batches[i*batch_size : min((i+1)*batch_size, len(im_batches))])) for i in range (num_batches)]
+     lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
+#else: #batch size is 1
+     
+     
      
 
 ##################
@@ -138,6 +152,7 @@ if not training:
                  batch = batch.cuda()
            with torch.no_grad():
                  prediction = model(Variable(batch), CUDA)
+           print (prediction.size(0))
            prediction = write_results(prediction, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
            end = time.time()
@@ -188,11 +203,11 @@ else:
      learning_rate =1e-3
      optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-     for i, batch in enumerate(im_batches): 
+     for i, (batch, label) in enumerate(zip(im_batches, lab_batches)): 
            if CUDA:
                  batch = batch.cuda()
            #for now gt is pred1
-           gt_pred1 = label_tensor#torch.load('tensor.pt')
+           gt_pred1 = label#torch.load('tensor.pt')
            if CUDA:
                  gt_pred1 = gt_pred1.cuda()
            

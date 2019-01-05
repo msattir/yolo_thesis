@@ -205,7 +205,7 @@ else:
      optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
      epoc = int(args.num_iter)
 
-     for e in range(epoc // batch_size): 
+     for e in range(epoc ): 
            
            for t in range(1):
                  for batch, label in zip(im_batches, lab_batches):
@@ -279,8 +279,14 @@ else:
                        optimizer.step()
 
                        b = list(model.parameters())[0].clone()
+                       with open("train.txt", "a") as myfile:
+                             txt = str(e) + " " + str(loss.item()) + "\n"
+                             myfile.write(txt)
                        print (e, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
+
+                       if e % 100 == 0:
+                             torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, 'models/batch_model_{}.pb'.format(e))
 
      for i, batch in enumerate(im_batches):
            #Load Image

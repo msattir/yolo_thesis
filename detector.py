@@ -28,7 +28,7 @@ def arg_parse():
      parser.add_argument("--images", dest = 'images', help = "Images dir to perform Detection on", default = "imgs/", type = str)
      parser.add_argument("--det", dest = 'det', help = "Images dir to store output Detection in", default = "det/", type = str)
      parser.add_argument("--bs", dest = 'bs', help = "Batch Size", default = 1)
-     parser.add_argument("--confidence", dest = "confidence", help = "Min Confidence", default = 0.4)
+     parser.add_argument("--confidence", dest = "confidence", help = "Min Confidence", default = 0.6)
      parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshold percent", default = 0.4)
      parser.add_argument("--cfg", dest = 'cfgfile', help = "Configure file", default = "cfg/yolov3.cfg", type = str)
      parser.add_argument("--weights", dest = 'weightsfile', help = "weightsfile", default = "yolov3.weights", type = str)
@@ -207,19 +207,79 @@ else:
 
      for e in range(epoc // batch_size): 
            
-           for t in range(2):
+           for t in range(1):
                  for batch, label in zip(im_batches, lab_batches):
                        if CUDA:
                              batch = batch.cuda()
                              gt_pred1 = label.cuda()
+
            
                        y_pred1 = model(batch, CUDA)
-                       loss = loss_fn(y_pred1, gt_pred1)
-                       print (t, loss.item())
+                       y_temp = y_pred1[:,:,0].clone()
+                       y_pred1[:,:,0] = y_pred1[:,:,1]
+                       y_pred1[:,:,1] = y_temp
+                        
+                       gt_obj = gt_pred1[:,:,:] > 0.0000001
+                       gt_noobj = gt_pred1[:,:,:] < 0
+
+                       loss_mse = torch.nn.MSELoss()
+                       y_pred1_obj = torch.mul(y_pred1, (gt_pred1[:,:,:] > 0).float())
+                       loss_xywh_obj = loss_mse(y_pred1_obj[:,:,0:4], gt_pred1[:,:,0:4])
+
+                       #loss_wh_obj = loss_mse(torch.pow(torch.abs(y_pred1_obj[:,:,2:4]), 0.5), torch.pow(torch.abs(gt_pred1[:,:,2:4]), 0.5))
+                       y_pred1_obj_box = y_pred1_obj.new_empty([y_pred1_obj.shape[0], y_pred1_obj.shape[1], 4])
+                       y_pred1_obj_box[:,:,0] = (y_pred1_obj[:,:,0] - y_pred1_obj[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,1] = (y_pred1_obj[:,:,1] - y_pred1_obj[:,:,3]/2) 
+                       y_pred1_obj_box[:,:,2] = (y_pred1_obj[:,:,0] + y_pred1_obj[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,3] = (y_pred1_obj[:,:,1] + y_pred1_obj[:,:,3]/2) 
+                       
+                       gt_pred1_box = gt_pred1.new_empty([gt_pred1.shape[0], gt_pred1.shape[1], 4])
+                       gt_pred1_box[:,:,0] = (gt_pred1[:,:,0] - gt_pred1[:,:,2]/2) 
+                       gt_pred1_box[:,:,1] = (gt_pred1[:,:,1] - gt_pred1[:,:,3]/2) 
+                       gt_pred1_box[:,:,2] = (gt_pred1[:,:,0] + gt_pred1[:,:,2]/2) 
+                       gt_pred1_box[:,:,3] = (gt_pred1[:,:,1] + gt_pred1[:,:,3]/2)
+
+                       iou = torch.empty([gt_pred1.shape[0], gt_pred1.shape[1]])
+
+                       for ix in range(gt_pred1.shape[0]):
+                             iou[ix, :] = box_iou(y_pred1_obj_box[ix, :, :], gt_pred1_box[ix, :, :])
+
+
+                       if CUDA:
+                             iou = iou.cuda()
+
+                       iou = torch.mul(iou, (gt_pred1[:,:,4]>0.00001).float())
+
+                       loss_conf = loss_mse(y_pred1_obj[:,:,4], iou)
+                       loss_ce = torch.nn.CrossEntropyLoss()
+                       loss_class = loss_mse(y_pred1[:,:,5:], gt_pred1[:,:,5:])
+      
+                       loss_obj = loss_xywh_obj + loss_class + loss_conf
+
+                       y_pred1_noobj = torch.mul(y_pred1, (gt_pred1[:, :, :] <= 0).float())
+                       loss_ce_noobj = loss_mse(y_pred1_noobj[:,:,4], gt_pred1[:,:,4])
+                  
+                       loss_noobj = loss_ce_noobj
+
+                       loss = loss_obj + loss_noobj 
+                              
+                       #y_pred1[gt_zeros[:,0],gt_zeros[:,1],:] *= 0
+                       #all_zeros = torch.zeros(y_pred1.shape).cuda()
+                       #gt = torch.load('I1_2009_12_14_drive_0071_000051.pt')
+                       #gt[:,(gt[:,:,4] < 0.5).nonzero(),5:] *= 0 
+                       #gt_pred1[:,(gt_pred1[:,:,4] < 0.5).nonzero(),5:] += 1e-5 
+                       #y_pred1[:,(gt_pred1[:,:,4] < 0.5).nonzero(),5:] *= 0
+                       #loss = loss_fn(y_pred1, gt_pred1)
+ 
+                       a = list(model.parameters())[0].clone()
+                       
                
                        optimizer.zero_grad()
                        loss.backward()
                        optimizer.step()
+
+                       b = list(model.parameters())[0].clone()
+                       print (e, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
 
      for i, batch in enumerate(im_batches):
@@ -229,6 +289,11 @@ else:
                  batch = batch.cuda()
            with torch.no_grad():
                  prediction = model(Variable(batch), CUDA)
+
+           y_temp = prediction[:,:,0].clone()
+           prediction[:,:,0] = prediction[:,:,1]
+           prediction[:,:,1] = y_temp
+
            prediction = write_results(prediction.data, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
            end = time.time()

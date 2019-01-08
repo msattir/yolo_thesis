@@ -35,6 +35,7 @@ def arg_parse():
      parser.add_argument("--reso", dest = 'reso', help = "Input resolution of the network", default = "416", type = str)
      parser.add_argument("--train", dest = 'train_dir', help = "Images Dir where images to train on are present", default = None, type = str)
      parser.add_argument("--iter", dest = 'num_iter', help = "Number of iterations in training", default = 10000)
+     parser.add_argument("--ckpt", dest = 'ckpt_dir', help = "Path of saved model", default = None, type = str)
      
      return parser.parse_args()
 
@@ -43,6 +44,7 @@ images = args.images
 batch_size = int(args.bs)
 confidence = float(args.confidence)
 nms_thresh = float(args.nms_thresh)
+ckpt_dir = args.ckpt_dir
 start = 0
 CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
@@ -51,12 +53,22 @@ num_classes = 2
 classes = load_classes("data/bosch.names")
 training = False
 
-print ("Loading Network")
-model = Darknet(args.cfgfile)
+if ckpt_dir is None:
+     checkpoint = 0
+     print ("Loading Network")
+     model = Darknet(args.cfgfile)
+else:
+     print ("Restoring Ckeckpoint")
+     checkpoint = 1
+     model = Darknet(args.cfgfile)
+     ckpt = torch.load(ckpt_dir)
+     model.load_state_dict(ckpt['model_state_dict'])
+
 
 if train_dir is None:
-     model.load_weights(args.weightsfile)
-     print ("Weights Loaded")
+     if checkpoint == 0:
+           model.load_weights(args.weightsfile)
+           print ("Weights Loaded")
 
 else:
      training = True
@@ -132,7 +144,8 @@ if (len(im_dim_list) % batch_size):
 if batch_size != 1:
      num_batches = len(imlist) // batch_size + leftover
      im_batches = [torch.cat((im_batches[i*batch_size : min((i+1)*batch_size, len(im_batches))])) for i in range (num_batches)]
-     lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
+     if training:
+           lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
 #else: #batch size is 1
      
      
@@ -199,13 +212,23 @@ if not training:
 else:
      write = 0 #Concatinate predictions
      start_det_loop = time.time()
-
      loss_fn = torch.nn.MSELoss(reduction='sum')
      learning_rate =1e-4
-     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-     epoc = int(args.num_iter)
 
-     for e in range(epoc ): 
+     if checkpoint == 0:
+           optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+           epoc = int(args.num_iter)
+           start = 0
+
+     else:
+           optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+           optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+           start = ckpt['epoch']
+           epoc = int(args.num_iter) + start
+           loss = ckpt['loss']
+           
+
+     for e in range(start, epoc): 
            
            for t in range(1):
                  for batch, label in zip(im_batches, lab_batches):

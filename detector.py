@@ -231,7 +231,7 @@ else:
      for e in range(start, epoc): 
            
            for t in range(1):
-                 for batch, label in zip(im_batches, lab_batches):
+                 for b, (batch, label) in enumerate(zip(im_batches, lab_batches)):
                        if CUDA:
                              batch = batch.cuda()
                              gt_pred1 = label.cuda()
@@ -294,18 +294,18 @@ else:
                        #y_pred1[:,(gt_pred1[:,:,4] < 0.5).nonzero(),5:] *= 0
                        #loss = loss_fn(y_pred1, gt_pred1)
  
-                       a = list(model.parameters())[0].clone()
+                      # a = list(model.parameters())[0].clone()
                        
                
                        optimizer.zero_grad()
                        loss.backward()
                        optimizer.step()
 
-                       b = list(model.parameters())[0].clone()
-                       with open("train.txt", "a") as myfile:
-                             txt = str(e) + " " + str(loss.item()) + "\n"
-                             myfile.write(txt)
-                       print (e, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
+                      # b = list(model.parameters())[0].clone()
+                      # with open("train.txt", "a") as myfile:
+                      #       txt = str(e) + " " + str(loss.item()) + "\n"
+                      #       myfile.write(txt)
+                       print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
 
                        if e % 100 == 0:

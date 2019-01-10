@@ -20,6 +20,30 @@ def letterbox_image(img, inp_dim):
      return canvas
 
 
+def letterbox_image2(img, inp_dim):
+     #Resize image maintaining aspect ration but padding grey cells and return resized_image size
+
+     img_w, img_h = img.shape[1], img.shape[0]
+     w, h = inp_dim
+     new_w = int(img_w*min(w/img_w, h/img_h))
+     new_h = int(img_h*min(w/img_w, h/img_h))
+     resized_image = cv2.resize(img, (new_w, new_h), interpolation = cv2.INTER_CUBIC)
+     return resized_image.shape
+
+def letterbox_image3(img, inp_dim):
+  #Resize image maintaining aspect ration but padding grey cells and return resized_image size
+
+  img_w, img_h = img.shape[1], img.shape[0]
+  w, h = inp_dim
+  new_w = int(img_w*min(w/img_w, h/img_h))
+  new_h = int(img_h*min(w/img_w, h/img_h))
+  resized_image = cv2.resize(img, (new_w, new_h), interpolation = cv2.INTER_CUBIC)
+ # resized = (resized_image[:,:,0]+resized_image[:,:,1]+resized_image[:,:,2])//3
+  canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
+  canvas[(h-new_h)//2:(h-new_h)//2+new_h, (w-new_w)//2:(w-new_w)//2+new_w, :] = resized_image
+  return canvas, resized_image.shape
+
+
 def prep_image(img, inp_dim):
      img = letterbox_image(img, (inp_dim, inp_dim))
      img = img[:,:,::-1].transpose((2,0,1)).copy()
@@ -74,6 +98,63 @@ def predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
 
      return prediction
 
+
+
+def gt_predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
+     #Convert a output feature map to 2D tensor
+
+     batch_size = prediction.size(0)
+     stride = inp_dim // prediction.size(2)
+     grid_size = inp_dim // stride
+     num_anchors = len(anchors)
+     bbox_attrs = 5 + num_classes
+
+     prediction = prediction.view(batch_size, bbox_attrs*num_anchors, grid_size*grid_size)
+     prediction = prediction.transpose(1,2).contiguous()
+     prediction = prediction.view(batch_size, grid_size*grid_size*num_anchors, bbox_attrs)
+
+     #anchors = [(a[0]/stride, a[1]/stride) for a in anchors]
+
+     #Sigmoid center_x,y and objectness score
+     #prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
+     #prediction[:,:,1] = torch.sigmoid(prediction[:,:,1])
+     #prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
+
+     #Center offsets
+     #grid = np.arange(grid_size)
+     #a, b = np.meshgrid(grid, grid)
+
+     #x_offset = torch.FloatTensor(a).view(-1,1)
+     #y_offset = torch.FloatTensor(b).view(-1,1)
+
+     #if CUDA:
+     #      x_offset = x_offset.cuda()
+     #      y_offset = y_offset.cuda()
+
+     #x_y_offset = torch.cat((x_offset,y_offset),1).repeat(1,num_anchors).view(-1,2).unsqueeze(0)
+     #prediction[:,:,:2] += x_y_offset
+ 
+     prediction[:,:,0] *= prediction[:,:,4] #Zero out non prediction boxes
+     prediction[:,:,1] *= prediction[:,:,4] #Zero out non prediction boxes
+     prediction[:,:,2] *= prediction[:,:,4] #Zero out non prediction boxes
+     prediction[:,:,3] *= prediction[:,:,4] #Zero out non prediction boxes
+
+     #Log space transform the height and wisth
+     #anchors = torch.FloatTensor(anchors)
+
+     #if CUDA:
+     #      anchors = anchors.cuda()
+
+     #anchors = anchors.repeat(grid_size*grid_size,1).unsqueeze(0)
+     #prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
+
+     #prediction[:,:,5: 5+num_classes] = torch.sigmoid((prediction[:,:,5:5+num_classes]))
+     #prediction[:,:,:2] *= stride
+
+     return prediction
+
+
+
 def unique(tensor):
      tensor_np = tensor.cpu().numpy()
      unique_np = np.unique(tensor_np)
@@ -95,6 +176,30 @@ def bbox_iou(box1, box2):
      inter_rect_x2 = torch.min(b1_x2, b2_x2)
      inter_rect_y2 = torch.min(b1_y2, b2_y2)
 
+     #Intersection area
+     inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1 + 1, min=0) * torch.clamp(inter_rect_y2 - inter_rect_y1 +1, min=0)
+     
+     #Union Area
+     b1_area = (b1_x2 - b1_x1 + 1)*(b1_y2 - b1_y1 + 1)
+     b2_area = (b2_x2 - b2_x1 + 1)*(b2_y2 - b2_y1 + 1)
+
+     iou = inter_area / (b1_area + b2_area - inter_area)
+
+     return iou
+
+def box_iou(box1, box2):
+     if len(box1.nonzero()) == 0 or len(box2.nonzero()) == 0:
+           return 0.0
+
+     b1_x1, b1_y1, b1_x2, b1_y2 = box1[:,0], box1[:,1], box1[:,2], box1[:,3]
+     b2_x1, b2_y1, b2_x2, b2_y2 = box2[:,0], box2[:,1], box2[:,2], box2[:,3]
+
+     #Coord of intersect rect
+     inter_rect_x1 = torch.max(b1_x1, b2_x1)
+     inter_rect_y1 = torch.max(b1_y1, b2_y1)
+     inter_rect_x2 = torch.min(b1_x2, b2_x2)
+     inter_rect_y2 = torch.min(b1_y2, b2_y2)
+     
      #Intersection area
      inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1 + 1, min=0) * torch.clamp(inter_rect_y2 - inter_rect_y1 +1, min=0)
      

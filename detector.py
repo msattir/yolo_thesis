@@ -13,7 +13,7 @@ from darknet import Darknet
 import pickle as pkl
 import pandas as pd
 import random
-
+from preprocess import gt_pred
 
 def load_classes(fileName):
      fp = open(fileName, "r")
@@ -28,13 +28,14 @@ def arg_parse():
      parser.add_argument("--images", dest = 'images', help = "Images dir to perform Detection on", default = "imgs/", type = str)
      parser.add_argument("--det", dest = 'det', help = "Images dir to store output Detection in", default = "det/", type = str)
      parser.add_argument("--bs", dest = 'bs', help = "Batch Size", default = 1)
-     parser.add_argument("--confidence", dest = "confidence", help = "Min Confidence", default = 0.4)
+     parser.add_argument("--confidence", dest = "confidence", help = "Min Confidence", default = 0.6)
      parser.add_argument("--nms_thresh", dest = "nms_thresh", help = "NMS Threshold percent", default = 0.4)
      parser.add_argument("--cfg", dest = 'cfgfile', help = "Configure file", default = "cfg/yolov3.cfg", type = str)
      parser.add_argument("--weights", dest = 'weightsfile', help = "weightsfile", default = "yolov3.weights", type = str)
      parser.add_argument("--reso", dest = 'reso', help = "Input resolution of the network", default = "416", type = str)
      parser.add_argument("--train", dest = 'train_dir', help = "Images Dir where images to train on are present", default = None, type = str)
      parser.add_argument("--iter", dest = 'num_iter', help = "Number of iterations in training", default = 10000)
+     parser.add_argument("--ckpt", dest = 'ckpt_dir', help = "Path of saved model", default = None, type = str)
      
      return parser.parse_args()
 
@@ -43,20 +44,31 @@ images = args.images
 batch_size = int(args.bs)
 confidence = float(args.confidence)
 nms_thresh = float(args.nms_thresh)
+ckpt_dir = args.ckpt_dir
 start = 0
 CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
 
-num_classes = 80
-classes = load_classes("data/coco.names")
+num_classes = 2
+classes = load_classes("data/bosch.names")
 training = False
 
-print ("Loading Network")
-model = Darknet(args.cfgfile)
+if ckpt_dir is None:
+     checkpoint = 0
+     print ("Loading Network")
+     model = Darknet(args.cfgfile)
+else:
+     print ("Restoring Ckeckpoint")
+     checkpoint = 1
+     model = Darknet(args.cfgfile)
+     ckpt = torch.load(ckpt_dir)
+     model.load_state_dict(ckpt['model_state_dict'])
+
 
 if train_dir is None:
-     model.load_weights(args.weightsfile)
-     print ("Weights Loaded")
+     if checkpoint == 0:
+           model.load_weights(args.weightsfile)
+           print ("Weights Loaded")
 
 else:
      training = True
@@ -85,6 +97,32 @@ except FileNotFoundError:
      print ("Input Dir not found {}".format(images))
      exit()
 
+imlist.sort()
+
+if training:
+     labels = images.replace('images', 'labels').replace('.png', '.txt').replace('I1_', 'L1_')
+      
+     try:
+          labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
+     except NotADirectoryError:
+          labellist = []
+          labellist.append(osp.join(osp.realpath('.'), labels))
+     except FileNotFoundError:
+          print ("Labels Dir not found {}".format(labels))
+          exit()
+
+     labellist.sort()
+     label_tensor = gt_pred(imlist, labellist, CUDA,  2)
+     label_test = []
+     for mi, bl in zip(imlist, labellist):
+         label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
+     assert all(label_test) #Check to see if all labels correspond to images
+     lab_batches = label_tensor.unsqueeze(0)
+     
+
+     
+
+
 if not os.path.exists(args.det):
      os.makedirs(args.det)
 
@@ -106,6 +144,11 @@ if (len(im_dim_list) % batch_size):
 if batch_size != 1:
      num_batches = len(imlist) // batch_size + leftover
      im_batches = [torch.cat((im_batches[i*batch_size : min((i+1)*batch_size, len(im_batches))])) for i in range (num_batches)]
+     if training:
+           lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
+#else: #batch size is 1
+     
+     
      
 
 ##################
@@ -123,6 +166,7 @@ if not training:
                  batch = batch.cuda()
            with torch.no_grad():
                  prediction = model(Variable(batch), CUDA)
+           print (prediction.size(0))
            prediction = write_results(prediction, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
            end = time.time()
@@ -168,31 +212,121 @@ if not training:
 else:
      write = 0 #Concatinate predictions
      start_det_loop = time.time()
-
      loss_fn = torch.nn.MSELoss(reduction='sum')
      learning_rate =1e-4
-     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-     for i, batch in enumerate(im_batches): 
+     if checkpoint == 0:
+           optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+           epoc = int(args.num_iter)
+           start = 0
+
+     else:
+           optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+           optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+           start = ckpt['epoch']
+           epoc = int(args.num_iter) + start
+           loss = ckpt['loss']
+           
+
+     for e in range(start, epoc): 
+           
+           for t in range(1):
+                 for b, (batch, label) in enumerate(zip(im_batches, lab_batches)):
+                       if CUDA:
+                             batch = batch.cuda()
+                             gt_pred1 = label.cuda()
+
+           
+                       y_pred1 = model(batch, CUDA)
+                       y_temp = y_pred1[:,:,0].clone()
+                       y_pred1[:,:,0] = y_pred1[:,:,1]
+                       y_pred1[:,:,1] = y_temp
+                        
+                       gt_obj = gt_pred1[:,:,:] > 0.0000001
+                       gt_noobj = gt_pred1[:,:,:] < 0
+
+                       loss_mse = torch.nn.MSELoss()
+                       y_pred1_obj = torch.mul(y_pred1, (gt_pred1[:,:,:] > 0).float())
+                       loss_xywh_obj = loss_mse(y_pred1_obj[:,:,0:4], gt_pred1[:,:,0:4])
+
+                       #loss_wh_obj = loss_mse(torch.pow(torch.abs(y_pred1_obj[:,:,2:4]), 0.5), torch.pow(torch.abs(gt_pred1[:,:,2:4]), 0.5))
+                       y_pred1_obj_box = y_pred1_obj.new_empty([y_pred1_obj.shape[0], y_pred1_obj.shape[1], 4])
+                       y_pred1_obj_box[:,:,0] = (y_pred1_obj[:,:,0] - y_pred1_obj[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,1] = (y_pred1_obj[:,:,1] - y_pred1_obj[:,:,3]/2) 
+                       y_pred1_obj_box[:,:,2] = (y_pred1_obj[:,:,0] + y_pred1_obj[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,3] = (y_pred1_obj[:,:,1] + y_pred1_obj[:,:,3]/2) 
+                       
+                       gt_pred1_box = gt_pred1.new_empty([gt_pred1.shape[0], gt_pred1.shape[1], 4])
+                       gt_pred1_box[:,:,0] = (gt_pred1[:,:,0] - gt_pred1[:,:,2]/2) 
+                       gt_pred1_box[:,:,1] = (gt_pred1[:,:,1] - gt_pred1[:,:,3]/2) 
+                       gt_pred1_box[:,:,2] = (gt_pred1[:,:,0] + gt_pred1[:,:,2]/2) 
+                       gt_pred1_box[:,:,3] = (gt_pred1[:,:,1] + gt_pred1[:,:,3]/2)
+
+                       iou = torch.empty([gt_pred1.shape[0], gt_pred1.shape[1]])
+
+                       for ix in range(gt_pred1.shape[0]):
+                             iou[ix, :] = box_iou(y_pred1_obj_box[ix, :, :], gt_pred1_box[ix, :, :])
+
+
+                       if CUDA:
+                             iou = iou.cuda()
+
+                       iou = torch.mul(iou, (gt_pred1[:,:,4]>0.00001).float())
+
+                       loss_conf = loss_mse(y_pred1_obj[:,:,4], iou)
+                       loss_ce = torch.nn.CrossEntropyLoss()
+                       loss_class = loss_mse(y_pred1[:,:,5:], gt_pred1[:,:,5:])
+      
+                       loss_obj = loss_xywh_obj + loss_class + loss_conf
+
+                       y_pred1_noobj = torch.mul(y_pred1, (gt_pred1[:, :, :] <= 0).float())
+                       loss_ce_noobj = loss_mse(y_pred1_noobj[:,:,4], gt_pred1[:,:,4])
+                  
+                       loss_noobj = loss_ce_noobj
+
+                       loss = loss_obj + loss_noobj 
+                              
+                       #y_pred1[gt_zeros[:,0],gt_zeros[:,1],:] *= 0
+                       #all_zeros = torch.zeros(y_pred1.shape).cuda()
+                       #gt = torch.load('I1_2009_12_14_drive_0071_000051.pt')
+                       #gt[:,(gt[:,:,4] < 0.5).nonzero(),5:] *= 0 
+                       #gt_pred1[:,(gt_pred1[:,:,4] < 0.5).nonzero(),5:] += 1e-5 
+                       #y_pred1[:,(gt_pred1[:,:,4] < 0.5).nonzero(),5:] *= 0
+                       #loss = loss_fn(y_pred1, gt_pred1)
+ 
+                      # a = list(model.parameters())[0].clone()
+                       
+               
+                       optimizer.zero_grad()
+                       loss.backward()
+                       optimizer.step()
+
+                      # b = list(model.parameters())[0].clone()
+                      # with open("train.txt", "a") as myfile:
+                      #       txt = str(e) + " " + str(loss.item()) + "\n"
+                      #       myfile.write(txt)
+                       print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
+          # print ("Epoc {}".format(e))
+
+                       if e % 100 == 0:
+                             torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, 'models/batch_model_{}.pb'.format(e))
+
+     for i, batch in enumerate(im_batches):
+           #Load Image
+           start = time.time()
            if CUDA:
                  batch = batch.cuda()
-           #for now gt is pred1
-           gt_pred1 = torch.load('tensor.pt')
-           if CUDA:
-                 gt_pred1 = gt_pred1.cuda()
-           
-           for t in range(num_iter):
-                 y_pred1 = model(batch, CUDA)
-                 loss = loss_fn(y_pred1, gt_pred1)
-                 print (t, loss.item())
-               
-                 optimizer.zero_grad()
-                 loss.backward()
-                 optimizer.step()
+           with torch.no_grad():
+                 prediction = model(Variable(batch), CUDA)
 
-           prediction = write_results(y_pred1.data, confidence, num_classes, nms_conf = nms_thresh)
+           y_temp = prediction[:,:,0].clone()
+           prediction[:,:,0] = prediction[:,:,1]
+           prediction[:,:,1] = y_temp
+
+           prediction = write_results(prediction.data, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
            end = time.time()
+
                            
            if type(prediction) == int:
                  for im_num, image in enumerate(imlist[i*batch_size: min((i+1)*batch_size, len(imlist))]):
@@ -229,7 +363,7 @@ else:
            exit()
 
 im_dim_list = torch.index_select(im_dim_list, 0, output[:,0].long())
-scaling_factor = torch.min(416/im_dim_list,1)[0].view(-1,1)
+scaling_factor = torch.min(inp_dim/im_dim_list,1)[0].view(-1,1)
 
 output[:,[1,3]] -= (inp_dim - scaling_factor*im_dim_list[:,0].view(-1,1))/2
 output[:,[2,4]] -= (inp_dim - scaling_factor*im_dim_list[:,1].view(-1,1))/2

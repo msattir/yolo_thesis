@@ -15,7 +15,7 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
      jump_cell = np.zeros(2)
      jump_cell[0] = max_size[0]/filter_size[0]
      jump_cell[1] = max_size[1]/filter_size[1]
-     predictions = np.zeros([3*(5+num_classes), filter_size[0], filter_size[1]])
+     predictions = np.zeros([3*(6+num_classes), filter_size[0], filter_size[1]])
      p = 0
      for i in range(1,filter_size[0]):
            for j in range(1,filter_size[1]):
@@ -35,9 +35,9 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
                        class_prob = np.eye(num_classes)[det[loc[0],4]-1]
                        im_aspect = det[loc[0],2]/det[loc[0],3]
                        m = np.argmin(abs(anc_masks_aspect-im_aspect))
-                       start = m*(5+num_classes)
-                       end = start+(5+num_classes)
-                       predictions[start:end,i,j] = np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0]), class_prob))
+                       start = m*(6+num_classes)
+                       end = start+(6+num_classes)
+                       predictions[start:end,i,j] = np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0, im_aspect]), class_prob))
                        #print (predictions[p,:])
                  p=p+1
      

@@ -35,7 +35,8 @@ def arg_parse():
      parser.add_argument("--reso", dest = 'reso', help = "Input resolution of the network", default = "416", type = str)
      parser.add_argument("--train", dest = 'train_dir', help = "Images Dir where images to train on are present", default = None, type = str)
      parser.add_argument("--iter", dest = 'num_iter', help = "Number of iterations in training", default = 10000)
-     parser.add_argument("--ckpt", dest = 'ckpt_dir', help = "Path of saved model", default = None, type = str)
+     parser.add_argument("--load_ckpt", dest = 'ckpt_load_dir', help = "Path of saved model for checkpoint training", default = None, type = str)
+     parser.add_argument("--save_ckpt", dest = 'ckpt_save_dir', help = "Path to save checkpoints of model", default = None, type = str)
      
      return parser.parse_args()
 
@@ -44,16 +45,17 @@ images = args.images
 batch_size = int(args.bs)
 confidence = float(args.confidence)
 nms_thresh = float(args.nms_thresh)
-ckpt_dir = args.ckpt_dir
+ckpt_load_dir = args.ckpt_load_dir
 start = 0
 CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
+ckpt_save_dir = args.ckpt_save_dir
 
 num_classes = 2
 classes = load_classes("data/bosch.names")
 training = False
 
-if ckpt_dir is None:
+if ckpt_load_dir is None:
      checkpoint = 0
      print ("Loading Network")
      model = Darknet(args.cfgfile)
@@ -61,7 +63,7 @@ else:
      print ("Restoring Ckeckpoint")
      checkpoint = 1
      model = Darknet(args.cfgfile)
-     ckpt = torch.load(ckpt_dir)
+     ckpt = torch.load(ckpt_load_dir)
      model.load_state_dict(ckpt['model_state_dict'])
 
 
@@ -166,6 +168,11 @@ if not training:
                  batch = batch.cuda()
            with torch.no_grad():
                  prediction = model(Variable(batch), CUDA)
+
+           y_temp = prediction[:,:,0].clone()
+           prediction[:,:,0] = prediction[:,:,1]
+           prediction[:,:,1] = y_temp
+
            print (prediction.size(0))
            prediction = write_results(prediction, confidence, num_classes, nms_conf = nms_thresh)
            print (prediction)
@@ -277,14 +284,14 @@ else:
                        loss_ce = torch.nn.CrossEntropyLoss()
                        loss_class = loss_mse(y_pred1[:,:,5:], gt_pred1[:,:,5:])
       
-                       loss_obj = loss_xywh_obj + loss_class + loss_conf
+                       loss_obj = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf
 
                        y_pred1_noobj = torch.mul(y_pred1, (gt_pred1[:, :, :] <= 0).float())
                        loss_ce_noobj = loss_mse(y_pred1_noobj[:,:,4], gt_pred1[:,:,4])
                   
                        loss_noobj = loss_ce_noobj
 
-                       loss = loss_obj + loss_noobj 
+                       loss = 1.0*loss_obj + 0.5*loss_noobj 
                               
                        #y_pred1[gt_zeros[:,0],gt_zeros[:,1],:] *= 0
                        #all_zeros = torch.zeros(y_pred1.shape).cuda()
@@ -307,9 +314,9 @@ else:
                       #       myfile.write(txt)
                        print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
-
-                       if e % 100 == 0:
-                             torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, 'models/batch_model_{}.pb'.format(e))
+                       if ckpt_save_dir is not None:
+                             if e % 2000 == 0:
+                                   torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
 
      for i, batch in enumerate(im_batches):
            #Load Image
@@ -318,6 +325,7 @@ else:
                  batch = batch.cuda()
            with torch.no_grad():
                  prediction = model(Variable(batch), CUDA)
+
 
            y_temp = prediction[:,:,0].clone()
            prediction[:,:,0] = prediction[:,:,1]

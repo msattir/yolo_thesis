@@ -57,7 +57,7 @@ def predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      stride = inp_dim // prediction.size(2)
      grid_size = inp_dim // stride
      num_anchors = len(anchors)
-     bbox_attrs = 5 + num_classes
+     bbox_attrs = 6 + num_classes
 
      prediction = prediction.view(batch_size, bbox_attrs*num_anchors, grid_size*grid_size)
      prediction = prediction.transpose(1,2).contiguous()
@@ -93,7 +93,7 @@ def predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      anchors = anchors.repeat(grid_size*grid_size,1).unsqueeze(0)
      prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
 
-     prediction[:,:,5: 5+num_classes] = torch.sigmoid((prediction[:,:,5:5+num_classes]))
+     prediction[:,:,6: 6+num_classes] = torch.sigmoid((prediction[:,:,6:6+num_classes]))
      prediction[:,:,:4] *= stride
 
      return prediction
@@ -107,7 +107,7 @@ def gt_predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      stride = inp_dim // prediction.size(2)
      grid_size = inp_dim // stride
      num_anchors = len(anchors)
-     bbox_attrs = 5 + num_classes
+     bbox_attrs = 6 + num_classes
 
      prediction = prediction.view(batch_size, bbox_attrs*num_anchors, grid_size*grid_size)
      prediction = prediction.transpose(1,2).contiguous()
@@ -232,15 +232,15 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
      for ind in range(batch_size):
            image_pred = prediction[ind]
 
-           max_conf, max_conf_score = torch.max(image_pred[:,5:5+num_classes], 1) #max_conf_score has class label, max_conf has prob
+           max_conf, max_conf_score = torch.max(image_pred[:,6:6+num_classes], 1) #max_conf_score has class label, max_conf has prob
            max_conf = max_conf.float().unsqueeze(1)
            max_conf_score = max_conf_score.float().unsqueeze(1)
-           seq = (image_pred[:,:5], max_conf, max_conf_score)
+           seq = (image_pred[:,:6], max_conf, max_conf_score)
            image_pred = torch.cat(seq, 1)
  
            non_zero_ind = (torch.nonzero(image_pred[:,4]))
            try:
-                 image_pred_ = image_pred[non_zero_ind.squeeze(),:].view(-1,7)
+                 image_pred_ = image_pred[non_zero_ind.squeeze(),:].view(-1,8)
            except:
                  continue
 
@@ -254,7 +254,7 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
                  #Performing NMS
                  cls_mask = image_pred_*(image_pred_[:,-1] == cls).float().unsqueeze(1)
                  class_mask_ind = torch.nonzero(cls_mask[:,-2]).squeeze()
-                 image_pred_class = image_pred_[class_mask_ind].view(-1,7)
+                 image_pred_class = image_pred_[class_mask_ind].view(-1,8)
 
                  #Sorting detections such that objectness score is at top
                  conf_sort_index = torch.sort(image_pred_class[:,4], descending = True)[1] 
@@ -276,7 +276,7 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
 
                        #Remove non-zero entries
                        non_zero_ind = torch.nonzero(image_pred_class[:,4]).squeeze()
-                       image_pred_class = image_pred_class[non_zero_ind].view(-1,7)
+                       image_pred_class = image_pred_class[non_zero_ind].view(-1,8)
 
                  batch_ind = image_pred_class.new(image_pred_class.size(0), 1).fill_(ind)
                  seq = batch_ind, image_pred_class

@@ -244,6 +244,7 @@ else:
                              gt_pred1 = label.cuda()
 
            
+
                        y_pred1 = model(batch, CUDA)
                        y_temp = y_pred1[:,:,0].clone()
                        y_pred1[:,:,0] = y_pred1[:,:,1]

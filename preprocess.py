@@ -63,7 +63,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
      for index, (im, lb) in enumerate(zip(imlist, labellist)):
 
            img = cv2.imread(im)
-           lab = im.replace('images', 'labels').replace('.png', '.txt').replace('I1', 'L1') 
+           lab = im.replace('images', 'labels').replace('.jpg', '.txt') 
            det = np.genfromtxt(lab, delimiter=',')
            
            canvas_shape = []
@@ -89,23 +89,23 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            
            det2 = det2.astype(int) 
         
-          # for i in range(0,det.shape[0]):
+          #for i in range(0,det.shape[0]):
           #       cv2.rectangle(img2, (det[i,0],det[i,1]), (det[i,2],det[i,3]), (0, 255, 0), 2)
 
           # cv2.imshow('image', img2)
           # cv2.waitKey(0)
 
-          # for i in range(0,det2.shape[0]):
-          #       cv2.circle(img2, (det2[i,0],det2[i,1]), 1, (255, 0, 0), 2)
+           for i in range(0,det2.shape[0]):
+                 cv2.circle(img2, (det2[i,0],det2[i,1]), 1, (255, 0, 0), 2)
 
-          # for i in range(0,det2.shape[0]):
-          #       cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
+           for i in range(0,det2.shape[0]):
+                 cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
 
-          # for i in range(0,det2.shape[0]):
-          #       cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
+           for i in range(0,det2.shape[0]):
+                 cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
 
-          # cv2.imshow('image', img2)
-          # cv2.waitKey(0)
+           cv2.imshow('image', img2)
+           cv2.waitKey(0)
 
         
            filts = [[13,13], [26,26], [52,52]]

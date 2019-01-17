@@ -102,7 +102,7 @@ except FileNotFoundError:
 imlist.sort()
 
 if training:
-     labels = images.replace('images', 'labels').replace('.png', '.txt').replace('I1_', 'L1_')
+     labels = images.replace('images', 'labels').replace('.jpg', '.txt')
       
      try:
           labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]

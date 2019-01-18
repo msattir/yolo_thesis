@@ -37,7 +37,7 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
                        m = np.argmin(abs(anc_masks_aspect-im_aspect))
                        start = m*(6+num_classes)
                        end = start+(6+num_classes)
-                       predictions[start:end,i,j] = np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0, im_aspect]), class_prob))
+                       predictions[start:end,i,j] = np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0, det[loc[0],1]/416.0]), class_prob))
                        #print (predictions[p,:])
                  p=p+1
      
@@ -63,18 +63,31 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
      for index, (im, lb) in enumerate(zip(imlist, labellist)):
 
            img = cv2.imread(im)
-           lab = im.replace('images', 'labels').replace('.jpg', '.txt') 
-           det = np.genfromtxt(lab, delimiter=',')
+           lab = (im.rsplit('train', 1)[0] + "labels" + im.rsplit('train', 1)[1]).replace('.jpg', '.txt') 
+           o_det = np.genfromtxt(lab, delimiter=',')
+
+           det = o_det.copy()
+
            
            canvas_shape = []
            img4, canvas_shape  = letterbox_image3(img,[416, 416])
+           
            img2 = img4.astype(np.uint8)
            
            x_fact = canvas_shape[0]/img.shape[0]
            y_fact = canvas_shape[1]/img.shape[1]
            
            if det.ndim == 1:
-                 det = det.reshape(1,-1) 
+                 det = det.reshape(1,-1)
+
+           #Convert 2nd and 3rd to width and height
+           if any(det[:,2] < det[:,0]) or any(det[:,3] < det[:,1]):
+                 print ("wrong det", det)
+                 exit(0)
+ 
+           det[:,2] = det[:,2] - det[:,0] 
+           det[:,3] = det[:,3] - det[:,1]
+
            det[:,0] = det[:,0]*y_fact
            det[:,2] = det[:,2]*y_fact
            det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
@@ -95,17 +108,17 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
           # cv2.imshow('image', img2)
           # cv2.waitKey(0)
 
-           for i in range(0,det2.shape[0]):
-                 cv2.circle(img2, (det2[i,0],det2[i,1]), 1, (255, 0, 0), 2)
+          # for i in range(0,det2.shape[0]):
+          #       cv2.circle(img2, (det2[i,0], det2[i,1]), 1, (255, 0, 0), 2)
 
-           for i in range(0,det2.shape[0]):
-                 cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
+          # for i in range(0,det2.shape[0]):
+          #       cv2.circle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)), 1, (0, 255, 0), 2)
 
-           for i in range(0,det2.shape[0]):
-                 cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
+          # for i in range(0,det2.shape[0]):
+          #       cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
 
-           cv2.imshow('image', img2)
-           cv2.waitKey(0)
+          # cv2.imshow('image', img2)
+          # cv2.waitKey(0)
 
         
            filts = [[13,13], [26,26], [52,52]]

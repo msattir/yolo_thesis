@@ -63,7 +63,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
      for index, (im, lb) in enumerate(zip(imlist, labellist)):
 
            img = cv2.imread(im)
-           lab = (im.rsplit('train', 1)[0] + "labels" + im.rsplit('train', 1)[1]).replace('.jpg', '.txt') 
+           #lab = (im.rsplit('train', 1)[0] + "labels" + im.rsplit('train', 1)[1]).replace('.jpg', '.txt') 
+           lab = im.replace('images', 'labels').replace('.jpg', '.txt')
            o_det = np.genfromtxt(lab, delimiter=',')
 
            det = o_det.copy()

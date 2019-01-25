@@ -63,6 +63,7 @@ else:
      print ("Restoring Ckeckpoint")
      checkpoint = 1
      model = Darknet(args.cfgfile)
+     model = nn.DataParallel(model)
      ckpt = torch.load(ckpt_load_dir)
      model.load_state_dict(ckpt['model_state_dict'])
 
@@ -78,10 +79,10 @@ else:
      num_iter = int(args.num_iter)
      print ("Training Enabled")
 
-model.net_info["height"] = args.reso
-inp_dim = int(model.net_info["height"])
-assert inp_dim % 32 == 0
-assert inp_dim > 32
+#model.net_info["height"] = args.reso
+inp_dim = 416#int(model.net_info["height"])
+#assert inp_dim % 32 == 0
+#assert inp_dim > 32
 
 
 #Enable CUDA if available
@@ -90,7 +91,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 if CUDA:
      if torch.cuda.device_count() > 1:
            print ("Using ", torch.cuda.device_count(), " GPUs to train")
-           model = nn.DataParallel(model)
+           #model = nn.DataParallel(model)
            model.to(device)
      else:
            model.cuda()
@@ -124,7 +125,7 @@ if training:
      labellist.sort()
      
      try:
-           label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(1))
+           label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(0))
 
      except FileNotFoundError:
            print ("Generating Labels")
@@ -331,7 +332,7 @@ else:
                        print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
                        if ckpt_save_dir is not None:
-                             if e % 1000 == 0:
+                             if e % 500 == 0:
                                    torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
 
      for i, batch in enumerate(im_batches):

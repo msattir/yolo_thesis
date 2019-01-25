@@ -85,15 +85,8 @@ assert inp_dim > 32
 
 
 #Enable CUDA if available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 if CUDA:
-     if torch.cuda.device_count() > 1:
-           print ("Using ", torch.cuda.device_count(), " GPUs to train")
-           model = nn.DataParallel(model)
-           model.to(device)
-     else:
-           model.cuda()
+     model.cuda()
 
 read_dir = time.time()
 
@@ -109,8 +102,7 @@ except FileNotFoundError:
 imlist.sort()
 
 if training:
-     #labels = (images.rsplit('train', 1)[0] + "labels" + images.rsplit('train', 1)[1]).replace('.jpg', '.txt')
-     labels = images.replace('images', 'labels').replace('.jpg', '.txt')
+     labels = (images.rsplit('train', 1)[0] + "labels" + images.rsplit('train', 1)[1]).replace('.jpg', '.txt')
       
      try:
           labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
@@ -122,17 +114,11 @@ if training:
           exit()
 
      labellist.sort()
-     
-     try:
-           label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(1))
-
-     except FileNotFoundError:
-           print ("Generating Labels")
-           label_tensor = gt_pred(imlist, labellist, CUDA,  2)
-           label_test = []
-           for mi, bl in zip(imlist, labellist):
-                 label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
-           assert all(label_test) #Check to see if all labels correspond to images
+     label_tensor = gt_pred(imlist, labellist, CUDA,  2)
+     label_test = []
+     for mi, bl in zip(imlist, labellist):
+         label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
+     assert all(label_test) #Check to see if all labels correspond to images
      lab_batches = label_tensor.unsqueeze(0)
      
 
@@ -256,7 +242,6 @@ else:
                        if CUDA:
                              batch = batch.cuda()
                              gt_pred1 = label.cuda()
-                             #model = torch.nn.DataParallel(model).cuda()
 
            
 
@@ -331,7 +316,7 @@ else:
                        print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
                        if ckpt_save_dir is not None:
-                             if e % 1000 == 0:
+                             if e % 2000 == 0:
                                    torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
 
      for i, batch in enumerate(im_batches):

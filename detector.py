@@ -85,8 +85,16 @@ assert inp_dim > 32
 
 
 #Enable CUDA if available
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 if CUDA:
-     model.cuda()
+     if torch.cuda.device_count() > 1:
+           print ("Using ", torch.cuda.device_count(), " GPUs to train")
+           model = nn.DataParallel(model)
+           model.to(device)
+     else:
+           model.cuda()
+
 
 read_dir = time.time()
 

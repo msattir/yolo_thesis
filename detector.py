@@ -63,7 +63,7 @@ else:
      print ("Restoring Ckeckpoint")
      checkpoint = 1
      model = Darknet(args.cfgfile)
-     model = nn.DataParllel(model)
+     model = nn.DataParallel(model)
      ckpt = torch.load(ckpt_load_dir)
      model.load_state_dict(ckpt['model_state_dict'])
 

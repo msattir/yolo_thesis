@@ -63,6 +63,7 @@ else:
      print ("Restoring Ckeckpoint")
      checkpoint = 1
      model = Darknet(args.cfgfile)
+     model = nn.DataParllel(model)
      ckpt = torch.load(ckpt_load_dir)
      model.load_state_dict(ckpt['model_state_dict'])
 
@@ -78,8 +79,8 @@ else:
      num_iter = int(args.num_iter)
      print ("Training Enabled")
 
-model.net_info["height"] = args.reso
-inp_dim = int(model.net_info["height"])
+#model.net_info["height"] = args.reso
+inp_dim = 416#int(model.net_info["height"])
 assert inp_dim % 32 == 0
 assert inp_dim > 32
 
@@ -90,7 +91,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 if CUDA:
      if torch.cuda.device_count() > 1:
            print ("Using ", torch.cuda.device_count(), " GPUs to train")
-           model = nn.DataParallel(model)
+           #model = nn.DataParallel(model)
            model.to(device)
      else:
            model.cuda()

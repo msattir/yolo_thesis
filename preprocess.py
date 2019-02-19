@@ -15,7 +15,7 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
      jump_cell = np.zeros(2)
      jump_cell[0] = max_size[0]/filter_size[0]
      jump_cell[1] = max_size[1]/filter_size[1]
-     predictions = np.zeros([3*(6+num_classes), filter_size[0], filter_size[1]])
+     predictions = np.zeros([3*(5+51+num_classes), filter_size[0], filter_size[1]])
      p = 0
      for i in range(1,filter_size[0]):
            for j in range(1,filter_size[1]):
@@ -32,12 +32,12 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
                        
                        cx = (det[loc[0],0]-(jump_cell[0]*i))/jump_cell[0]
                        cy = (det[loc[0],1]-(jump_cell[1]*j))/jump_cell[1]
-                       class_prob = np.eye(num_classes)[det[loc[0],4]-1]
+                       class_prob = np.array([1])#np.eye(num_classes)[det[loc[0],4]-1]
                        im_aspect = det[loc[0],2]/det[loc[0],3]
                        m = np.argmin(abs(anc_masks_aspect-im_aspect))
-                       start = m*(6+num_classes)
-                       end = start+(6+num_classes)
-                       predictions[start:end,i,j] = np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0, det[loc[0],1]/416.0]), class_prob))
+                       start = m*(5+51+num_classes)
+                       end = start+(5+51+num_classes)
+                       predictions[start:end,i,j] = np.concatenate((np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0]), det[loc[0],4:])),class_prob))
                        #print (predictions[p,:])
                  p=p+1
      
@@ -67,7 +67,10 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            lab = im.replace('images', 'labels').replace('.jpg', '.txt')
            o_det = np.genfromtxt(lab, delimiter=',')
 
-           det = o_det.copy()
+           if o_det.ndim == 1:
+                 o_det = o_det.reshape(1,-1)
+ 
+           det = o_det[:,:-1]
 
            
            canvas_shape = []
@@ -78,16 +81,14 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            x_fact = canvas_shape[0]/img.shape[0]
            y_fact = canvas_shape[1]/img.shape[1]
            
-           if det.ndim == 1:
-                 det = det.reshape(1,-1)
 
            #Convert 2nd and 3rd to width and height
-           if any(det[:,2] < det[:,0]) or any(det[:,3] < det[:,1]):
-                 print ("wrong det", det)
-                 exit(0)
+           #if any(det[:,2] < det[:,0]) or any(det[:,3] < det[:,1]):
+           #      print ("wrong det", det)
+           #      exit(0)
  
-           det[:,2] = det[:,2] - det[:,0] 
-           det[:,3] = det[:,3] - det[:,1]
+           #det[:,2] = det[:,2] - det[:,0] 
+           #det[:,3] = det[:,3] - det[:,1]
 
            det[:,0] = det[:,0]*y_fact
            det[:,2] = det[:,2]*y_fact

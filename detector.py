@@ -51,7 +51,7 @@ CUDA = torch.cuda.is_available()
 train_dir = args.train_dir
 ckpt_save_dir = args.ckpt_save_dir
 
-num_classes = 2
+num_classes = 1
 classes = load_classes("data/bosch.names")
 training = False
 
@@ -111,29 +111,32 @@ imlist.sort()
 
 if training:
      #labels = (images.rsplit('train', 1)[0] + "labels" + images.rsplit('train', 1)[1]).replace('.jpg', '.txt')
-     labels = images.replace('images', 'labels').replace('.jpg', '.txt')
+     if os.path.isfile(images):
+           labels = images.replace('images', 'labels').replace('.jpg','.txt')
+     else:
+           labels = images.replace('images', 'labels')
       
      try:
-          labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
+           labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
      except NotADirectoryError:
-          labellist = []
-          labellist.append(osp.join(osp.realpath('.'), labels))
+           labellist = []
+           labellist.append(osp.join(osp.realpath('.'), labels))
      except FileNotFoundError:
-          print ("Labels Dir not found {}".format(labels))
-          exit()
+           print ("Labels Dir not found {}".format(labels))
+           exit()
 
      labellist.sort()
      
-     try:
-           label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(0))
+     #try:
+     #      label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(0))
 
-     except FileNotFoundError:
-           print ("Generating Labels")
-           label_tensor = gt_pred(imlist, labellist, CUDA,  2)
-           label_test = []
-           for mi, bl in zip(imlist, labellist):
-                 label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
-           assert all(label_test) #Check to see if all labels correspond to images
+     #except FileNotFoundError:
+     print ("Generating Labels")
+     label_tensor = gt_pred(imlist, labellist, CUDA,  num_classes)
+     label_test = []
+     for mi, bl in zip(imlist, labellist):
+           label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
+     assert all(label_test) #Check to see if all labels correspond to images
      lab_batches = label_tensor.unsqueeze(0)
      
 
@@ -299,7 +302,15 @@ else:
 
                        loss_conf = loss_mse(y_pred1_obj[:,:,4], iou)
                        loss_ce = torch.nn.CrossEntropyLoss()
-                       loss_class = loss_mse(y_pred1[:,:,5:], gt_pred1[:,:,5:])
+                       loss_class = loss_mse(y_pred1[:,:,5+51:5+51+num_classes], gt_pred1[:,:,5+51:5+51+num_classes]) #Will update to CE Loss
+                        
+                       gt_key_mask = gt_pred1[:,:,5:5+51]
+                       gt_keypoint = ((gt_key_mask[:,:,:] > 0.2).nonzero()).float()
+                       
+                       
+
+                       
+
       
                        loss_obj = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf
 

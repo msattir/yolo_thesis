@@ -57,7 +57,7 @@ def predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      stride = inp_dim // prediction.size(2)
      grid_size = inp_dim // stride
      num_anchors = len(anchors)
-     bbox_attrs = 6 + num_classes
+     bbox_attrs = 5+51+num_classes
 
      prediction = prediction.view(batch_size, bbox_attrs*num_anchors, grid_size*grid_size)
      prediction = prediction.transpose(1,2).contiguous()
@@ -93,7 +93,7 @@ def predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      anchors = anchors.repeat(grid_size*grid_size,1).unsqueeze(0)
      prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
 
-     prediction[:,:,6: 6+num_classes] = torch.sigmoid((prediction[:,:,6:6+num_classes]))
+     prediction[:,:,5+51: 5+51+num_classes] = torch.sigmoid((prediction[:,:,5+51:5+51+num_classes]))
      prediction[:,:,:4] *= stride
 
      return prediction
@@ -107,7 +107,7 @@ def gt_predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      stride = inp_dim // prediction.size(2)
      grid_size = inp_dim // stride
      num_anchors = len(anchors)
-     bbox_attrs = 6 + num_classes
+     bbox_attrs = 5+51 + num_classes
 
      prediction = prediction.view(batch_size, bbox_attrs*num_anchors, grid_size*grid_size)
      prediction = prediction.transpose(1,2).contiguous()

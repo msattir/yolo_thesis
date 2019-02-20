@@ -91,7 +91,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 if CUDA:
      if torch.cuda.device_count() > 1:
            print ("Using ", torch.cuda.device_count(), " GPUs to train")
-           #model = nn.DataParallel(model)
+           if checkpoint != 1:
+                 model = nn.DataParallel(model)
            model.to(device)
      else:
            model.cuda()

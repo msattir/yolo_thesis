@@ -33,6 +33,7 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
                        cx = (det[loc[0],0]-(jump_cell[0]*i))/jump_cell[0]
                        cy = (det[loc[0],1]-(jump_cell[1]*j))/jump_cell[1]
                        class_prob = np.eye(num_classes)[det[loc[0],4]-1]
+                       #obj_class = [det[loc[0],4]-1]
                        im_aspect = det[loc[0],2]/det[loc[0],3]
                        m = np.argmin(abs(anc_masks_aspect-im_aspect))
                        start = m*(6+num_classes)

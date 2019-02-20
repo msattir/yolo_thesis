@@ -129,12 +129,17 @@ if training:
 
      except FileNotFoundError:
            print ("Generating Labels")
-           label_tensor = gt_pred(imlist, labellist, CUDA,  2)
+           label_tensor = gt_pred(imlist, labellist, CUDA,  num_classes)
            label_test = []
            for mi, bl in zip(imlist, labellist):
                  label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
            assert all(label_test) #Check to see if all labels correspond to images
      lab_batches = label_tensor.unsqueeze(0)
+     y_mask=torch.zeros(label_tensor.shape)
+     y_mask[(label_tensor[:,:,4] == 1).nonzero()[:,0], (label_tensor[:,:,4] == 1).nonzero()[:,1], :] = 1.0
+     y_mask[:,:,4] = 1.0
+     y_mask_batches = y_mask.unsqueeze(0)
+     
      
 
      
@@ -163,6 +168,7 @@ if batch_size != 1:
      im_batches = [torch.cat((im_batches[i*batch_size : min((i+1)*batch_size, len(im_batches))])) for i in range (num_batches)]
      if training:
            lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
+           y_mask_batches = [(y_mask[i*batch_size : min((i+1)*batch_size, len(y_mask)),:,:]) for i in range (num_batches)]
 #else: #batch size is 1
      
      
@@ -253,32 +259,31 @@ else:
      for e in range(start, epoc): 
            
            for t in range(1):
-                 for b, (batch, label) in enumerate(zip(im_batches, lab_batches)):
+                 for b, (batch, label, y_mask) in enumerate(zip(im_batches, lab_batches, y_mask_batches)):
                        if CUDA:
                              batch = batch.cuda()
                              gt_pred1 = label.cuda()
+                             y_mask = y_mask.cuda()
                              #model = torch.nn.DataParallel(model).cuda()
-
-           
-
                        y_pred1 = model(batch, CUDA)
                        y_temp = y_pred1[:,:,0].clone()
                        y_pred1[:,:,0] = y_pred1[:,:,1]
                        y_pred1[:,:,1] = y_temp
+
+                       y_pred1 = torch.mul(y_pred1, y_mask)
                         
                        gt_obj = gt_pred1[:,:,:] > 0.0000001
                        gt_noobj = gt_pred1[:,:,:] < 0
 
                        loss_mse = torch.nn.MSELoss()
-                       y_pred1_obj = torch.mul(y_pred1, (gt_pred1[:,:,:] > 0).float())
-                       loss_xywh_obj = loss_mse(y_pred1_obj[:,:,0:4], gt_pred1[:,:,0:4])
+                       loss_xywh_obj = loss_mse(y_pred1[:,:,0:4], gt_pred1[:,:,0:4])
 
                        #loss_wh_obj = loss_mse(torch.pow(torch.abs(y_pred1_obj[:,:,2:4]), 0.5), torch.pow(torch.abs(gt_pred1[:,:,2:4]), 0.5))
-                       y_pred1_obj_box = y_pred1_obj.new_empty([y_pred1_obj.shape[0], y_pred1_obj.shape[1], 4])
-                       y_pred1_obj_box[:,:,0] = (y_pred1_obj[:,:,0] - y_pred1_obj[:,:,2]/2) 
-                       y_pred1_obj_box[:,:,1] = (y_pred1_obj[:,:,1] - y_pred1_obj[:,:,3]/2) 
-                       y_pred1_obj_box[:,:,2] = (y_pred1_obj[:,:,0] + y_pred1_obj[:,:,2]/2) 
-                       y_pred1_obj_box[:,:,3] = (y_pred1_obj[:,:,1] + y_pred1_obj[:,:,3]/2) 
+                       y_pred1_obj_box = y_pred1.new_empty([y_pred1.shape[0], y_pred1.shape[1], 4])
+                       y_pred1_obj_box[:,:,0] = (y_pred1[:,:,0] - y_pred1[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,1] = (y_pred1[:,:,1] - y_pred1[:,:,3]/2) 
+                       y_pred1_obj_box[:,:,2] = (y_pred1[:,:,0] + y_pred1[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,3] = (y_pred1[:,:,1] + y_pred1[:,:,3]/2) 
                        
                        gt_pred1_box = gt_pred1.new_empty([gt_pred1.shape[0], gt_pred1.shape[1], 4])
                        gt_pred1_box[:,:,0] = (gt_pred1[:,:,0] - gt_pred1[:,:,2]/2) 
@@ -297,18 +302,13 @@ else:
 
                        iou = torch.mul(iou, (gt_pred1[:,:,4]>0.00001).float())
 
-                       loss_conf = loss_mse(y_pred1_obj[:,:,4], iou)
+                       loss_conf = loss_mse(y_pred1[:,:,4], iou)
+                       loss_aspect = loss_mse(y_pred1[:,:,5], gt_pred1[:,:,5])
                        loss_ce = torch.nn.CrossEntropyLoss()
-                       loss_class = loss_mse(y_pred1[:,:,5:], gt_pred1[:,:,5:])
+                       loss_class = loss_mse(y_pred1[:,:,6:], gt_pred1[:,:,6:])
       
-                       loss_obj = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf
+                       loss = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf + 1.0*loss_aspect
 
-                       y_pred1_noobj = torch.mul(y_pred1, (gt_pred1[:, :, :] <= 0).float())
-                       loss_ce_noobj = loss_mse(y_pred1_noobj[:,:,4], gt_pred1[:,:,4])
-                  
-                       loss_noobj = loss_ce_noobj
-
-                       loss = 1.0*loss_obj + 0.5*loss_noobj 
                               
                        #y_pred1[gt_zeros[:,0],gt_zeros[:,1],:] *= 0
                        #all_zeros = torch.zeros(y_pred1.shape).cuda()
@@ -334,7 +334,7 @@ else:
                        if ckpt_save_dir is not None:
                              if e % 500 == 0:
                                    torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
-
+     model=model.eval()
      for i, batch in enumerate(im_batches):
            #Load Image
            start = time.time()

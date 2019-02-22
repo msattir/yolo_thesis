@@ -84,7 +84,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
 
            #Convert 2nd and 3rd to width and height
            if any(det[:,2] < det[:,0]) or any(det[:,3] < det[:,1]):
-                 print ("wrong det", det)
+                 print ("wrong det", det, im)
                  exit(0)
  
            det[:,2] = det[:,2] - det[:,0] 

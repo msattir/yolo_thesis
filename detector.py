@@ -242,17 +242,17 @@ else:
      write = 0 #Concatinate predictions
      start_det_loop = time.time()
      loss_fn = torch.nn.MSELoss(reduction='sum')
-     learning_rate =1e-4
+     learning_rate =1e-3
 
      if checkpoint == 0:
            optimizer = torch.optim.Adam(model.parameters())
-           scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=9996, gamma=0.05) 
+           scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.25) 
            epoc = int(args.num_iter)
            start = 0
 
      else:
            optimizer = torch.optim.Adam(model.parameters())
-           scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=9996, gamma=0.05) 
+           scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.2) 
            scheduler.load_state_dict(ckpt['scheduler_state_dict'])
            optimizer.load_state_dict(ckpt['optimizer_state_dict'])
            start = ckpt['epoch']
@@ -328,7 +328,6 @@ else:
                        optimizer.zero_grad()
                        loss.backward()
                        optimizer.step()
-                       scheduler.step()
 
                       # b = list(model.parameters())[0].clone()
                       # with open("train.txt", "a") as myfile:
@@ -336,9 +335,10 @@ else:
                       #       myfile.write(txt)
                        print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item(), scheduler.get_lr()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
           # print ("Epoc {}".format(e))
-                       if ckpt_save_dir is not None:
-                             if e % 500 == 0:
-                                   torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
+           scheduler.step()
+           if ckpt_save_dir is not None:
+                 if e % 1000 == 0:
+                       torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
      model=model.eval()
      for i, batch in enumerate(im_batches):
            #Load Image

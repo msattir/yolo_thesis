@@ -259,7 +259,8 @@ else:
            epoc = int(args.num_iter) + start
            loss = ckpt['loss']
            
-
+     rnd_int = int(torch.randint(0,10000,(1,)).item())
+     write_str = '' 
      for e in range(start, epoc): 
             
            for t in range(1):
@@ -269,6 +270,7 @@ else:
                              gt_pred1 = label.cuda()
                              y_mask = y_mask.cuda()
                              #model = torch.nn.DataParallel(model).cuda()
+                       f=open('logs/training_'+str(rnd_int)+'.log', 'a+')
                        y_pred1 = model(batch, CUDA)
                        y_temp = y_pred1[:,:,0].clone()
                        y_pred1[:,:,0] = y_pred1[:,:,1]
@@ -329,16 +331,28 @@ else:
                        loss.backward()
                        optimizer.step()
 
+                       pos_loc = gt_pred1[0,:,4].nonzero()
+                       pos_item=''
+                       for p in pos_loc:
+                             pos_item += str(y_pred1[0,p,4].item())+','
+ 
+
                       # b = list(model.parameters())[0].clone()
                       # with open("train.txt", "a") as myfile:
                       #       txt = str(e) + " " + str(loss.item()) + "\n"
                       #       myfile.write(txt)
-                       print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item(), scheduler.get_lr()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
+                       print (e,'-', b, loss.item(), loss_class.item(), y_pred1[0,10094,4].item(), y_pred1[0,pos_loc[0],4].item(), scheduler.get_lr()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
+                       write_str+=str(e)+','+str(b)+','+str(loss.item())+','+str(loss_class.item())+','+str(y_pred1[0,10094,4].item())+','+(pos_item)+ str(scheduler.get_lr())+'\n'
           # print ("Epoc {}".format(e))
            scheduler.step()
            if ckpt_save_dir is not None:
                  if e % 1000 == 0:
                        torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
+                 
+           if e % 1000 == 0:      
+                 f.write(write_str)
+                 write_str=''
+                 f.close()
      model=model.eval()
      for i, batch in enumerate(im_batches):
            #Load Image

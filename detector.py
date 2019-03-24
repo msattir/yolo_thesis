@@ -269,6 +269,7 @@ else:
                              gt_pred1 = label.cuda()
                              y_mask = y_mask.cuda()
                              #model = torch.nn.DataParallel(model).cuda()
+                       f=open('logs/training.txt', 'a+')
                        y_pred1 = model(batch, CUDA)
                        y_temp = y_pred1[:,:,0].clone()
                        y_pred1[:,:,0] = y_pred1[:,:,1]
@@ -307,11 +308,11 @@ else:
                        iou = torch.mul(iou, (gt_pred1[:,:,4]>0.00001).float())
 
                        loss_conf = loss_mse(y_pred1[:,:,4], iou)
-                       loss_aspect = loss_mse(y_pred1[:,:,5], gt_pred1[:,:,5])
+                       #loss_aspect = loss_mse(y_pred1[:,:,5], gt_pred1[:,:,5])
                        loss_ce = torch.nn.CrossEntropyLoss()
                        loss_class = loss_mse(y_pred1[:,:,6:], gt_pred1[:,:,6:])
       
-                       loss = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf + 1.0*loss_aspect
+                       loss = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf #+ 1.0*loss_aspect
 
                               
                        #y_pred1[gt_zeros[:,0],gt_zeros[:,1],:] *= 0
@@ -329,11 +330,19 @@ else:
                        loss.backward()
                        optimizer.step()
 
+                       pos_loc = gt_pred1[0,:,4].nonzero()
+                       pos_item=''
+                       for p in pos_loc:
+                             pos_item += str(y_pred1[0,p,4].item())+','
+
                       # b = list(model.parameters())[0].clone()
                       # with open("train.txt", "a") as myfile:
                       #       txt = str(e) + " " + str(loss.item()) + "\n"
                       #       myfile.write(txt)
-                       print (e,'-', b, loss.item(), y_pred1[0,10094,4].item(), iou[0,10094].item(), y_pred1[0,10093,4].item(), iou[0,10093].item(), scheduler.get_lr()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
+                       print (e,'-', b, loss.item(), loss_class.item(), y_pred1[0,10094,4].item(), y_pred1[0,pos_loc[0],4].item(), scheduler.get_lr()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
+                       write_str=str(e)+','+str(b)+','+str(loss.item())+','+str(loss_class.item())+','+str(y_pred1[0,10094,4].item())+','+(pos_item)+ str(scheduler.get_lr())+'\n' 
+                       f.write(write_str) 
+                       f.close()
           # print ("Epoc {}".format(e))
            scheduler.step()
            if ckpt_save_dir is not None:

@@ -44,8 +44,8 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
      t_pred = torch.FloatTensor(predictions)
 
      x = t_pred.unsqueeze(0)
-     if CUDA:
-           x = x.cuda()
+     #if CUDA:
+     #      x = x.cuda()
      ret = gt_predict_transform(x, 416, anc_masks, num_classes, CUDA)
      return(ret)
 
@@ -72,7 +72,9 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
  
            det = o_det[:,:-1]
 
-           
+           if det.ndim == 1:
+                 det = det.reshape(1, -1)          
+ 
            canvas_shape = []
            img4, canvas_shape  = letterbox_image3(img,[416, 416])
            
@@ -102,7 +104,14 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            det2[:,2] = det[:,2]
            det2[:,3] = det[:,3]
            
-           det2 = det2.astype(int) 
+           det2 = det2.astype(int)
+
+           dele=[]
+           for ix, d in enumerate(det2):
+                 if any(d[:] <= 0):
+                       dele.append(ix)
+
+           det2 = np.delete(det2, dele, axis=0) 
         
           #for i in range(0,det.shape[0]):
           #       cv2.rectangle(img2, (det[i,0],det[i,1]), (det[i,2],det[i,3]), (0, 255, 0), 2)

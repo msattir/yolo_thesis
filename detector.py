@@ -83,28 +83,10 @@ else:
 
 #model.net_info["height"] = args.reso
 inp_dim = 416#int(model.net_info["height"])
-<<<<<<< HEAD
-assert inp_dim % 32 == 0
-assert inp_dim > 32
-
-
-#Enable CUDA if available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-if CUDA:
-     if torch.cuda.device_count() > 1:
-           print ("Using ", torch.cuda.device_count(), " GPUs to train")
-           #model = nn.DataParallel(model)
-           model.to(device)
-     else:
-           model.cuda()
-
-=======
 #assert inp_dim % 32 == 0
 #assert inp_dim > 32
 
 
->>>>>>> fix-commit-1
 
 read_dir = time.time()
 
@@ -120,12 +102,8 @@ except FileNotFoundError:
 imlist.sort()
 
 if training:
-<<<<<<< HEAD
-     labels = (images.rsplit('train', 1)[0] + "labels" + images.rsplit('train', 1)[1]).replace('.jpg', '.txt')
-=======
      #labels = (images.rsplit('train', 1)[0] + "labels" + images.rsplit('train', 1)[1]).replace('.jpg', '.txt')
      labels = images.replace('images', 'labels').replace('.jpg', '.txt')
->>>>>>> fix-commit-1
       
      try:
           labellist = [osp.join(osp.realpath('.'), labels, lab) for lab in os.listdir(labels)]
@@ -315,15 +293,9 @@ else:
                        if CUDA:
                              batch = batch.cuda()
                              gt_pred1 = label.cuda()
-<<<<<<< HEAD
-
-           
-
-=======
                              y_mask = y_mask.cuda()
                              #model = torch.nn.DataParallel(model).cuda()
                        f=open('logs/training_'+str(rnd_int)+'.log', 'a+')
->>>>>>> fix-commit-1
                        y_pred1 = model(batch, CUDA)
                        y_temp = y_pred1[:,:,0].clone()
                        y_pred1[:,:,0] = y_pred1[:,:,1]

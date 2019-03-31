@@ -14,6 +14,8 @@ import pickle as pkl
 import pandas as pd
 import random
 from preprocess import gt_pred
+from torch.utils.data import Dataset, DataLoader
+import torch.distributed as dist
 
 def load_classes(fileName):
      fp = open(fileName, "r")
@@ -85,17 +87,6 @@ inp_dim = 416#int(model.net_info["height"])
 #assert inp_dim > 32
 
 
-#Enable CUDA if available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-if CUDA:
-     if torch.cuda.device_count() > 1:
-           print ("Using ", torch.cuda.device_count(), " GPUs to train")
-           if checkpoint != 1:
-                 model = nn.DataParallel(model)
-           model.to(device)
-     else:
-           model.cuda()
 
 read_dir = time.time()
 
@@ -135,16 +126,17 @@ if training:
            for mi, bl in zip(imlist, labellist):
                  label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
            assert all(label_test) #Check to see if all labels correspond to images
+
      lab_batches = label_tensor.unsqueeze(0)
-     y_mask=torch.zeros(label_tensor.shape)
-     y_mask[(label_tensor[:,:,4] == 1).nonzero()[:,0], (label_tensor[:,:,4] == 1).nonzero()[:,1], :] = 1.0
-     y_mask[:,:,4] = 1.0
-     y_mask_batches = y_mask.unsqueeze(0)
+     y_mask_obj=torch.zeros(label_tensor.shape)
+     y_mask_noobj=torch.zeros(label_tensor.shape)
+     y_mask_obj[(label_tensor[:,:,4] == 1).nonzero()[:,0], (label_tensor[:,:,4] == 1).nonzero()[:,1], :] = 1.0
+     y_mask_noobj[(label_tensor[:,:,4] == 0).nonzero()[:,0], (label_tensor[:,:,4] == 0).nonzero()[:,1], 4] = 1.0
+     y_mask_obj_batches = y_mask_obj.unsqueeze(0)
+     y_mask_noobj_batches = y_mask_noobj.unsqueeze(0)
      
      
-
      
-
 
 if not os.path.exists(args.det):
      os.makedirs(args.det)
@@ -153,6 +145,7 @@ load_batch = time.time()
 loaded_ims = [cv2.imread(x) for x in imlist]
 
 im_batches = list(map(prep_image, loaded_ims, [inp_dim for x in range(len(imlist))]))
+im_batches_orig = im_batches
 
 im_dim_list = [(x.shape[1], x.shape[0]) for x in loaded_ims]
 im_dim_list = torch.FloatTensor(im_dim_list).repeat(1,2)
@@ -169,11 +162,39 @@ if batch_size != 1:
      im_batches = [torch.cat((im_batches[i*batch_size : min((i+1)*batch_size, len(im_batches))])) for i in range (num_batches)]
      if training:
            lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
-           y_mask_batches = [(y_mask[i*batch_size : min((i+1)*batch_size, len(y_mask)),:,:]) for i in range (num_batches)]
+           y_mask_obj_batches = [(y_mask_obj[i*batch_size : min((i+1)*batch_size, len(y_mask_obj)),:,:]) for i in range (num_batches)]
+           y_mask_noobj_batches = [(y_mask_noobj[i*batch_size : min((i+1)*batch_size, len(y_mask_noobj)),:,:]) for i in range (num_batches)]
 #else: #batch size is 1
      
      
+class myDataset(Dataset):
+     # Yolo Dataset class for DataLoader
      
+     def __init__(self, im_batches, label_tensor):
+           self.images = im_batches
+           self.labels = label_tensor
+
+     def __getitem__(self, index):
+           return self.images[index].squeeze(), self.labels[index, :, :]
+
+     def __len__(self):
+           return len(self.images)
+
+
+               
+#Enable CUDA if available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if CUDA:
+     if torch.cuda.device_count() > 1:
+           print ("Using ", torch.cuda.device_count(), " GPUs to train")
+           if checkpoint != 1:
+                 dist.init_process_group(backend='nccl', init_method='tcp://127.0.0.1:9999', world_size=1, rank=0)
+                 model = nn.DataParallel(model, device_ids=[0,1])
+                 #sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+           model.to(device)
+     else:
+           model.cuda()
 
 ##################
 ### Detection Loop
@@ -239,20 +260,22 @@ if not training:
 #########################
 
 else:
+     
+     dataset = myDataset(im_batches_orig, label_tensor)
      write = 0 #Concatinate predictions
      start_det_loop = time.time()
      loss_fn = torch.nn.MSELoss(reduction='sum')
      learning_rate =1e-3
 
      if checkpoint == 0:
-           optimizer = torch.optim.Adam(model.parameters())
-           scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.25) 
+           optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+           scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[300,600,900,1200,1500,1800,2100,2400,2700,3000], gamma=0.5) 
            epoc = int(args.num_iter)
            start = 0
 
      else:
-           optimizer = torch.optim.Adam(model.parameters())
-           scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.2) 
+           optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+           scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[300,600,900,1200,1500,1800,2100,2400,2700,3000], gamma=0.5) 
            scheduler.load_state_dict(ckpt['scheduler_state_dict'])
            optimizer.load_state_dict(ckpt['optimizer_state_dict'])
            start = ckpt['epoch']
@@ -260,15 +283,21 @@ else:
            loss = ckpt['loss']
            
      rnd_int = int(torch.randint(0,10000,(1,)).item())
-     write_str = '' 
+     write_str = ''
+
+     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=2)
+
      for e in range(start, epoc): 
             
            for t in range(1):
-                 for b, (batch, label, y_mask) in enumerate(zip(im_batches, lab_batches, y_mask_batches)):
+                 for b, (data, y_mask_obj, y_mask_noobj) in enumerate(zip(train_dataloader, y_mask_obj_batches, y_mask_noobj_batches)):
+                       batch, label = data
+                       batch, label = Variable(batch), Variable(label)
                        if CUDA:
                              batch = batch.cuda()
                              gt_pred1 = label.cuda()
-                             y_mask = y_mask.cuda()
+                             y_mask_obj = y_mask_obj.cuda()
+                             y_mask_noobj = y_mask_noobj.cuda()
                              #model = torch.nn.DataParallel(model).cuda()
                        f=open('logs/training_'+str(rnd_int)+'.log', 'a+')
                        y_pred1 = model(batch, CUDA)
@@ -276,20 +305,24 @@ else:
                        y_pred1[:,:,0] = y_pred1[:,:,1]
                        y_pred1[:,:,1] = y_temp
 
-                       y_pred1 = torch.mul(y_pred1, y_mask)
+                       y_pred1_obj = torch.mul(y_pred1, y_mask_obj)
+                       y_pred1_noobj = torch.mul(y_pred1, y_mask_noobj)
                         
+                       zero_tensor = torch.zeros([y_pred1_noobj.shape[0], y_pred1_noobj.shape[1]], dtype=torch.float32)
+                       if CUDA:
+                             zero_tensor = zero_tensor.cuda()
                        gt_obj = gt_pred1[:,:,:] > 0.0000001
                        gt_noobj = gt_pred1[:,:,:] < 0
 
                        loss_mse = torch.nn.MSELoss()
-                       loss_xywh_obj = loss_mse(y_pred1[:,:,0:4], gt_pred1[:,:,0:4])
+                       loss_xywh_obj = loss_mse(y_pred1_obj[:,:,0:4], gt_pred1[:,:,0:4])
 
                        #loss_wh_obj = loss_mse(torch.pow(torch.abs(y_pred1_obj[:,:,2:4]), 0.5), torch.pow(torch.abs(gt_pred1[:,:,2:4]), 0.5))
-                       y_pred1_obj_box = y_pred1.new_empty([y_pred1.shape[0], y_pred1.shape[1], 4])
-                       y_pred1_obj_box[:,:,0] = (y_pred1[:,:,0] - y_pred1[:,:,2]/2) 
-                       y_pred1_obj_box[:,:,1] = (y_pred1[:,:,1] - y_pred1[:,:,3]/2) 
-                       y_pred1_obj_box[:,:,2] = (y_pred1[:,:,0] + y_pred1[:,:,2]/2) 
-                       y_pred1_obj_box[:,:,3] = (y_pred1[:,:,1] + y_pred1[:,:,3]/2) 
+                       y_pred1_obj_box = y_pred1.new_empty([y_pred1_obj.shape[0], y_pred1_obj.shape[1], 4])
+                       y_pred1_obj_box[:,:,0] = (y_pred1_obj[:,:,0] - y_pred1_obj[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,1] = (y_pred1_obj[:,:,1] - y_pred1_obj[:,:,3]/2) 
+                       y_pred1_obj_box[:,:,2] = (y_pred1_obj[:,:,0] + y_pred1_obj[:,:,2]/2) 
+                       y_pred1_obj_box[:,:,3] = (y_pred1_obj[:,:,1] + y_pred1_obj[:,:,3]/2) 
                        
                        gt_pred1_box = gt_pred1.new_empty([gt_pred1.shape[0], gt_pred1.shape[1], 4])
                        gt_pred1_box[:,:,0] = (gt_pred1[:,:,0] - gt_pred1[:,:,2]/2) 
@@ -308,7 +341,9 @@ else:
 
                        iou = torch.mul(iou, (gt_pred1[:,:,4]>0.00001).float())
 
-                       loss_conf = loss_mse(y_pred1[:,:,4], iou)
+                       loss_conf_obj = loss_mse(y_pred1_obj[:,:,4], iou)
+                       loss_conf_noobj = loss_mse(y_pred1_noobj[:,:,4], zero_tensor)
+                       loss_conf = 1.0*loss_conf_obj + 0.5*loss_conf_noobj
                        loss_aspect = loss_mse(y_pred1[:,:,5], gt_pred1[:,:,5])
                        loss_ce = torch.nn.CrossEntropyLoss()
                        loss_class = loss_mse(y_pred1[:,:,6:], gt_pred1[:,:,6:])
@@ -346,10 +381,10 @@ else:
           # print ("Epoc {}".format(e))
            scheduler.step()
            if ckpt_save_dir is not None:
-                 if e % 1000 == 0:
+                 if e % 300 == 0:
                        torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
                  
-           if e % 1000 == 0:      
+           if e % 10 == 0:      
                  f.write(write_str)
                  write_str=''
                  f.close()

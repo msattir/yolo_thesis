@@ -44,8 +44,8 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
      t_pred = torch.FloatTensor(predictions)
 
      x = t_pred.unsqueeze(0)
-     if CUDA:
-           x = x.cuda()
+     #if CUDA:
+     #      x = x.cuda()
      ret = gt_predict_transform(x, 416, anc_masks, num_classes, CUDA)
      return(ret)
 
@@ -63,12 +63,28 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
      for index, (im, lb) in enumerate(zip(imlist, labellist)):
 
            img = cv2.imread(im)
+<<<<<<< HEAD
            lab = (im.rsplit('train', 1)[0] + "labels" + im.rsplit('train', 1)[1]).replace('.jpg', '.txt') 
            o_det = np.genfromtxt(lab, delimiter=',')
 
            det = o_det.copy()
 
            
+=======
+           lab = im.replace('images', 'labels').replace('.jpg', '.txt') 
+           det_o = np.genfromtxt(lab, delimiter=',')
+           det = det_o.copy()
+        
+           if det.ndim == 1:
+                 det = det.reshape(1,-1) 
+          
+           if np.isnan(det).any():
+                 print (im)
+ 
+           if det.ndim == 1:
+                 det = det.reshape(1,-1) 
+
+>>>>>>> fix-commit-1
            canvas_shape = []
            img4, canvas_shape  = letterbox_image3(img,[416, 416])
            
@@ -77,6 +93,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            x_fact = canvas_shape[0]/img.shape[0]
            y_fact = canvas_shape[1]/img.shape[1]
            
+<<<<<<< HEAD
            if det.ndim == 1:
                  det = det.reshape(1,-1)
 
@@ -88,6 +105,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            det[:,2] = det[:,2] - det[:,0] 
            det[:,3] = det[:,3] - det[:,1]
 
+=======
+>>>>>>> fix-commit-1
            det[:,0] = det[:,0]*y_fact
            det[:,2] = det[:,2]*y_fact
            det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
@@ -102,7 +121,17 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            
            det2 = det2.astype(int) 
         
+<<<<<<< HEAD
           #for i in range(0,det.shape[0]):
+=======
+           dele=[]
+           for ix, d in enumerate(det2):
+                 if any(d[:] <= 0):
+                       dele.append(ix)
+
+           det2 = np.delete(det2, dele, axis=0)
+          # for i in range(0,det.shape[0]):
+>>>>>>> fix-commit-1
           #       cv2.rectangle(img2, (det[i,0],det[i,1]), (det[i,2],det[i,3]), (0, 255, 0), 2)
 
           # cv2.imshow('image', img2)
@@ -131,6 +160,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
                        w_pred = 1
                  else:
                        pred = torch.cat((pred, pred_1),1)
+           if np.isinf(pred).any():
+                 print (im) 
            if write == 0:
                  output = pred
                  #output = output.unsqueeze(0)

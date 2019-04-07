@@ -117,7 +117,8 @@ if training:
      labellist.sort()
      
      try:
-           label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(0))
+           label_tensor = torch.load("bosch-8317.pt")
+           print ("Loading Labels tensor done...")
 
      except FileNotFoundError:
            print ("Generating Labels")
@@ -188,7 +189,7 @@ if CUDA:
      if torch.cuda.device_count() > 1:
            print ("Using ", torch.cuda.device_count(), " GPUs to train")
            if checkpoint != 1:
-                 #dist.init_process_group(backend='nccl', init_method='tcp://127.0.0.1:9999', world_size=1, rank=0)
+                 dist.init_process_group(backend='nccl', init_method='tcp://127.0.0.1:9999', world_size=1, rank=0)
                  model = nn.DataParallel(model, device_ids=[0,1])
                  #sampler = torch.utils.data.distributed.DistributedSampler(dataset)
            model.to(device)
@@ -282,7 +283,7 @@ else:
      rnd_int = int(torch.randint(0,10000,(1,)).item())
      write_str = ''
 
-     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=2)
+     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=1)
 
      for e in range(start, epoc): 
             
@@ -361,6 +362,23 @@ else:
                        for p in pos_loc:
                              pos_item += str(y_pred1[0,p,4].item())+','
  
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[1,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[1,p,4].item())+','
+      
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[2,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[2,p,4].item())+','
+ 
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[3,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[3,p,4].item())+','
 
                       # b = list(model.parameters())[0].clone()
                       # with open("train.txt", "a") as myfile:
@@ -371,7 +389,7 @@ else:
           # print ("Epoc {}".format(e))
            scheduler.step()
            if ckpt_save_dir is not None:
-                 if e % 300 == 0:
+                 if e % 200 == 1:
                        torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
                  
            if e % 10 == 0:      

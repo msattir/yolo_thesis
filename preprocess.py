@@ -73,8 +73,6 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            if np.isnan(det).any():
                  print (im)
  
-           if det.ndim == 1:
-                 det = det.reshape(1,-1) 
 
            canvas_shape = []
            img4, canvas_shape  = letterbox_image3(img,[416, 416])
@@ -95,11 +93,12 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            det2[:,2] = det[:,2]
            det2[:,3] = det[:,3]
            
-           det2 = det2.astype(int) 
+           det2 = det2.astype(int)
+           #det3 = det2.copy() 
         
            dele=[]
            for ix, d in enumerate(det2):
-                 if any(d[:] <= 0):
+                 if any(d[0:4] <= 0):
                        dele.append(ix)
 
            det2 = np.delete(det2, dele, axis=0)
@@ -122,6 +121,8 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
           # cv2.waitKey(0)
 
         
+           if det2.size==0:
+                 print ('Empty, ', lb)
            filts = [[13,13], [26,26], [52,52]]
            all_masks = [[6,7,8], [3,4,5], [0,1,2]]
            w_pred = 0

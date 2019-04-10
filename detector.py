@@ -117,7 +117,7 @@ if training:
      labellist.sort()
      
      try:
-           label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(0))
+           label_tensor = torch.load("bdd_12725.pt")
 
      except FileNotFoundError:
            print ("Generating Labels")
@@ -285,7 +285,7 @@ else:
      rnd_int = int(torch.randint(0,10000,(1,)).item())
      write_str = ''
 
-     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=2)
+     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=1)
 
      for e in range(start, epoc): 
             
@@ -381,7 +381,7 @@ else:
           # print ("Epoc {}".format(e))
            scheduler.step()
            if ckpt_save_dir is not None:
-                 if e % 300 == 0:
+                 if e % 200 == 1:
                        torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
                  
            if e % 10 == 0:      

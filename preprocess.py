@@ -73,18 +73,10 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
 
            if det.ndim == 1:
                  det = det.reshape(1,-1) 
-           dele=[]
-           for ix, d in enumerate(det):
-                 if any(d[:] < 0):
-                       dele.append(ix)
-
-           det = np.delete(det, dele, axis=0)
           
            if np.isnan(det).any():
                  print (im)
  
-           if det.ndim == 1:
-                 det = det.reshape(1,-1) 
 
            if not det.size:
                  print (im, "---")
@@ -102,7 +94,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            #Convert 2nd and 3rd to width and height
            if any(det[:,2] < det[:,0]) or any(det[:,3] < det[:,1]):
                  print ("wrong det", det, im)
-                 exit(0)
+           #      exit(0)
  
            det[:,2] = det[:,2] - det[:,0] 
            det[:,3] = det[:,3] - det[:,1]
@@ -123,7 +115,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
     
            dele=[]
            for ix, d in enumerate(det2):
-                 if any(d[:] <= 0):
+                 if any(d[0:4] <= 0):
                        dele.append(ix)
 
            det2 = np.delete(det2, dele, axis=0)

@@ -43,6 +43,18 @@ def letterbox_image3(img, inp_dim):
   canvas[(h-new_h)//2:(h-new_h)//2+new_h, (w-new_w)//2:(w-new_w)//2+new_w, :] = resized_image
   return canvas, resized_image.shape
 
+def letterbox_image3_copy(img, inp_dim):
+  #Resize image maintaining aspect ration but padding grey cells and return resized_image size
+
+  img_w, img_h = img.shape[1], img.shape[0]
+  w, h = inp_dim
+  new_w = int(img_w*min(w/img_w, h/img_h))
+  new_h = int(img_h*min(w/img_w, h/img_h))
+  resized_image = cv2.resize(img, (new_w, new_h), interpolation = cv2.INTER_CUBIC)
+ # resized = (resized_image[:,:,0]+resized_image[:,:,1]+resized_image[:,:,2])//3
+  canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
+  canvas[(h-new_h)//2:(h-new_h)//2+new_h, (w-new_w)//2:(w-new_w)//2+new_w, :] = resized_image
+  return canvas, resized_image.shape
 
 def prep_image(img, inp_dim):
      img = letterbox_image(img, (inp_dim, inp_dim))
@@ -69,6 +81,7 @@ def predict_transform(prediction, inp_dim, anchors, num_classes, CUDA=True):
      prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
      prediction[:,:,1] = torch.sigmoid(prediction[:,:,1])
      prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
+     prediction[:,:,7::3] = torch.sigmoid(prediction[:,:,7::3])
 
      #Center offsets
      grid = np.arange(grid_size)
@@ -213,6 +226,15 @@ def box_iou(box1, box2):
      
 
 
+
+def compute_oks(y_pred, gt, oks):
+     #Returns an array of shape y_pred with object keypoint similarity computed with denom=16
+     eps = 1e-6*(torch.ones(oks.shape)) 
+     oks[:,:,7::3] = torch.exp(-1.0*(torch.pow((y_pred[:,:,5::3][:,:,:-1]-gt[:,:,5::3][:,:,:-1]),2)+torch.pow((y_pred[:,:,6::3]-gt[:,:,6::3]),2))/64.0)
+ 
+     return (torch.max(oks,eps)) 
+
+
 def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
      #Convert 10647 bounding boxes to 1 per detection
      conf_mask = (prediction[:,:,4] > confidence).float().unsqueeze(2)
@@ -232,15 +254,15 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
      for ind in range(batch_size):
            image_pred = prediction[ind]
 
-           max_conf, max_conf_score = torch.max(image_pred[:,6:6+num_classes], 1) #max_conf_score has class label, max_conf has prob
+           max_conf, max_conf_score = torch.max(image_pred[:,5+51:5+51+num_classes], 1) #max_conf_score has class label, max_conf has prob
            max_conf = max_conf.float().unsqueeze(1)
            max_conf_score = max_conf_score.float().unsqueeze(1)
-           seq = (image_pred[:,:6], max_conf, max_conf_score)
+           seq = (image_pred[:,:5+51], max_conf, max_conf_score)
            image_pred = torch.cat(seq, 1)
  
            non_zero_ind = (torch.nonzero(image_pred[:,4]))
            try:
-                 image_pred_ = image_pred[non_zero_ind.squeeze(),:].view(-1,8)
+                 image_pred_ = image_pred[non_zero_ind.squeeze(),:].view(-1,7+51)
            except:
                  continue
 
@@ -254,7 +276,7 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
                  #Performing NMS
                  cls_mask = image_pred_*(image_pred_[:,-1] == cls).float().unsqueeze(1)
                  class_mask_ind = torch.nonzero(cls_mask[:,-2]).squeeze()
-                 image_pred_class = image_pred_[class_mask_ind].view(-1,8)
+                 image_pred_class = image_pred_[class_mask_ind].view(-1,7+51)
 
                  #Sorting detections such that objectness score is at top
                  conf_sort_index = torch.sort(image_pred_class[:,4], descending = True)[1] 
@@ -276,7 +298,7 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
 
                        #Remove non-zero entries
                        non_zero_ind = torch.nonzero(image_pred_class[:,4]).squeeze()
-                       image_pred_class = image_pred_class[non_zero_ind].view(-1,8)
+                       image_pred_class = image_pred_class[non_zero_ind].view(-1,7+51)
 
                  batch_ind = image_pred_class.new(image_pred_class.size(0), 1).fill_(ind)
                  seq = batch_ind, image_pred_class

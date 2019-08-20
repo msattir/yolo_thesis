@@ -161,7 +161,7 @@ class Darknet(nn.Module):
            self.blocks = parse_cfg(cfgfile)
            self.net_info, self.module_list = create_modules(self.blocks)
 
-     def forward(self, x, CUDA=True):
+     def forward(self, x, CUDA):
            modules = self.blocks[1:]
            outputs = {}
 
@@ -298,12 +298,11 @@ class Darknet(nn.Module):
                                 
 
 
-#model = Darknet("cfg/yolo-mask.cfg")
+#model = Darknet("cfg/yolov3.cfg")
 #inp = get_test_input()
 #model = model.cuda()
 #
 #pred = model(inp, torch.cuda.is_available())#torch.cuda.is_available())
-#print (pred.shape)
 #
 #pred1 = torch.load('tensor.pt')
 #

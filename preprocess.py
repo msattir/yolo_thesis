@@ -37,7 +37,9 @@ def y_pred(filter_size, masks, det, max_size, CUDA, num_classes=1):
                        m = np.argmin(abs(anc_masks_aspect-im_aspect))
                        start = m*(5+51+num_classes)
                        end = start+(5+51+num_classes)
-                       predictions[start:end,i,j] = np.concatenate((np.concatenate((np.array([det[loc[0],0], det[loc[0],1], det[loc[0],2], det[loc[0],3], 1.0]), det[loc[0],4:])),class_prob))
+                       det2 = det.copy()
+                       det2[loc[0],6::3]=(det2[loc[0],6::3]!=0).astype(int)
+                       predictions[start:end,i,j] = np.concatenate((np.concatenate((np.array([det2[loc[0],0], det2[loc[0],1], det2[loc[0],2], det2[loc[0],3], 1.0]), det2[loc[0],4:])),class_prob))
                        #print (predictions[p,:])
                  p=p+1
      
@@ -61,6 +63,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
      #         N - Number of images in imlist and labellist or batch size
      write = 0 
      for index, (im, lb) in enumerate(zip(imlist, labellist)):
+           print ("Gen Labels:", index)
 
            img = cv2.imread(im)
            #lab = (im.rsplit('train', 1)[0] + "labels" + im.rsplit('train', 1)[1]).replace('.jpg', '.txt') 
@@ -70,7 +73,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
            if o_det.ndim == 1:
                  o_det = o_det.reshape(1,-1)
  
-           det = o_det[:,:-1]
+           det = o_det#[:,:-1]
 
            if det.ndim == 1:
                  det = det.reshape(1, -1)          
@@ -91,12 +94,22 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
  
            #det[:,2] = det[:,2] - det[:,0] 
            #det[:,3] = det[:,3] - det[:,1]
+  
+           if img.shape[0] > img.shape[1]:
+                 det[:,0] = det[:,0]*y_fact+int((416-canvas_shape[1])/2)
+                 det[:,2] = det[:,2]*y_fact
+                 det[:,1] = det[:,1]*x_fact#+int((416-canvas_shape[0])/2)
+                 det[:,3] = det[:,3]*x_fact
+                 det[:,4::3] = det[:,4::3]*y_fact+int((416-canvas_shape[1])/2)*(det[:,4::3] > 0)*1.0
+                 det[:,5::3] = det[:,5::3]*x_fact
+           else:
+                 det[:,0] = det[:,0]*y_fact#+int((416-canvas_shape[1])/2)
+                 det[:,2] = det[:,2]*y_fact
+                 det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
+                 det[:,3] = det[:,3]*x_fact
+                 det[:,4::3] = det[:,4::3]*y_fact
+                 det[:,5::3] = det[:,5::3]*x_fact+int((416-canvas_shape[0])/2)*(det[:,5::3] > 0)*1.0
 
-           det[:,0] = det[:,0]*y_fact
-           det[:,2] = det[:,2]*y_fact
-           det[:,1] = det[:,1]*x_fact+int((416-canvas_shape[0])/2)
-           det[:,3] = det[:,3]*x_fact
-           
            det2 = det.copy()
            det2[:,0] = det2[:,0]+det2[:,2]/2
            det2[:,1] = det2[:,1]+det2[:,3]/2
@@ -108,7 +121,7 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
 
            dele=[]
            for ix, d in enumerate(det2):
-                 if any(d[:] <= 0):
+                 if any(d[0:4] <= 0):
                        dele.append(ix)
 
            det2 = np.delete(det2, dele, axis=0) 
@@ -128,10 +141,25 @@ def gt_pred(imlist, labellist, CUDA, num_classes):
           # for i in range(0,det2.shape[0]):
           #       cv2.circle(img2, (int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)), 1, (0, 0, 255), 2)
 
-          # cv2.imshow('image', img2)
+          # font                   = cv2.FONT_HERSHEY_SIMPLEX
+          # fontScale              = 0.4
+          # fontColor              = (255,255,255)
+          # lineType               = 1
+
+          # for i in range(0,det2.shape[0]):
+          #       cv2.rectangle(img2, (int(det2[i,0]-det2[i,2]/2),int(det2[i,1]-det2[i,3]/2)),(int(det2[i,0]+det2[i,2]/2),int(det2[i,1]+det2[i,3]/2)),(0, 0, 255), 2)
+
+          #       det3=det2[i,4:]
+          #       for j in range(0,49,3):
+          #              if det3[j+2] > 0.7:
+          #                    cv2.circle(img2, (det3[j],det3[j+1]), 3, (0,255,0))
+          #                    cv2.putText(img2, "{}".format(int(j/3)), (det3[j],det3[j+1]), font, fontScale, fontColor, lineType)
+
+         
+          # cv2.imshow('image2', img2)
           # cv2.waitKey(0)
 
-        
+           #print (img.shape) 
            filts = [[13,13], [26,26], [52,52]]
            all_masks = [[6,7,8], [3,4,5], [0,1,2]]
            w_pred = 0

@@ -54,7 +54,7 @@ train_dir = args.train_dir
 ckpt_save_dir = args.ckpt_save_dir
 
 num_classes = 1
-classes = load_classes("data/bosch.names")
+classes = load_classes("data/mask.names")
 training = False
 
 if ckpt_load_dir is None:
@@ -120,27 +120,47 @@ if training:
 
      labellist.sort()
      
-     #try:
-     #      label_tensor = torch.load("bdd_9929.pt", map_location=lambda storage, loc: storage.cuda(0))
+     try:
+           label_tensor = torch.load("coco_full_12.pt")
 
-     #except FileNotFoundError:
-     print ("Generating Labels")
-     label_tensor = gt_pred(imlist, labellist, CUDA,  num_classes)
-     label_test = []
-     for mi, bl in zip(imlist, labellist):
-           label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
-     assert all(label_test) #Check to see if all labels correspond to images
+     except FileNotFoundError:
+           print ("Generating Labels")
+           label_tensor = gt_pred(imlist, labellist, CUDA,  num_classes)
+           label_test = []
+           for mi, bl in zip(imlist, labellist):
+                 label_test.append(mi.rsplit('/', 1)[1][:-3][1:] == bl.rsplit('/', 1)[1][:-3][1:])
+           assert all(label_test) #Check to see if all labels correspond to images
+  
+     #torch.save(label_tensor,'coco_full_1.pt')
+     #label_tensor = label_tensor.type(torch.half)
      lab_batches = label_tensor.unsqueeze(0)
-     y_mask_obj=torch.zeros(label_tensor.shape)
-     y_mask_noobj=torch.zeros(label_tensor.shape)
-     y_mask_obj[(label_tensor[:,:,4] == 1).nonzero()[:,0], (label_tensor[:,:,4] == 1).nonzero()[:,1], :5] = 1.0
-     y_mask_obj[:,:,5:5+51] = (label_tensor[:,:,5:5+51]!=0).float()
-     y_mask_obj[:,:,7::3] = 1.0 #Start from 7th pos and jump every 3
-     y_mask_obj[:,:,5+51] = 1.0 #Class label
+     y_mask_obj=torch.zeros(label_tensor.shape, dtype=torch.float32)
+     y_mask_noobj=torch.zeros(label_tensor.shape, dtype=torch.float32)
+     y_mask_obj_keypoint=torch.zeros(label_tensor.shape, dtype=torch.float32)
+     y_mask_obj_nokeypoint=torch.zeros(label_tensor.shape, dtype=torch.float32)
+     
+     y_mask_obj[(label_tensor[:,:,4] == 1).nonzero()[:,0], (label_tensor[:,:,4] == 1).nonzero()[:,1], :] = 1.0
      y_mask_noobj[(label_tensor[:,:,4] == 0).nonzero()[:,0], (label_tensor[:,:,4] == 0).nonzero()[:,1], 4] = 1.0
+
+     y_mask_obj_keypoint[label_tensor.nonzero()[:,0], label_tensor.nonzero()[:,1], label_tensor.nonzero()[:,2]] = 1.0
+     y_mask_obj_keypoint[:,:,:5] = 0.0
+     y_mask_obj_keypoint[:,:,5+51:] = 0.0
+ 
+     y_mask_obj_nokeypoint = y_mask_obj_keypoint.clone()
+     y_mask_obj_nokeypoint[label_tensor.nonzero()[:,0], label_tensor.nonzero()[:,1], 7::3] = 1.0
+     y_mask_obj_nokeypoint = y_mask_obj_nokeypoint - y_mask_obj_keypoint
+
+     y_mask_obj_keypoint_oks = y_mask_obj_nokeypoint.clone()
+     y_mask_obj_keypoint_oks[label_tensor.nonzero()[:,0], label_tensor.nonzero()[:,1], 7::3] = 1.0
+     y_mask_obj_keypoint_oks -= y_mask_obj_nokeypoint 
+
+     y_mask_obj_keypoint_xy = y_mask_obj_keypoint - y_mask_obj_keypoint_oks
+
      y_mask_obj_batches = y_mask_obj.unsqueeze(0)
      y_mask_noobj_batches = y_mask_noobj.unsqueeze(0)
-     
+     y_mask_obj_keypoint_xy_batches = y_mask_obj_keypoint_xy.unsqueeze(0)
+     y_mask_obj_keypoint_oks_batches = y_mask_obj_keypoint_oks.unsqueeze(0)
+     y_mask_obj_nokeypoint_batches = y_mask_obj_nokeypoint.unsqueeze(0)
 
      
 
@@ -171,6 +191,12 @@ if batch_size != 1:
            lab_batches = [(label_tensor[i*batch_size : min((i+1)*batch_size, len(label_tensor)),:,:]) for i in range (num_batches)]
            y_mask_obj_batches = [(y_mask_obj[i*batch_size : min((i+1)*batch_size, len(y_mask_obj)),:,:]) for i in range (num_batches)]
            y_mask_noobj_batches = [(y_mask_noobj[i*batch_size : min((i+1)*batch_size, len(y_mask_noobj)),:,:]) for i in range (num_batches)]
+           y_mask_obj_keypoint_xy_batches = [(y_mask_obj_keypoint_xy[i*batch_size : min((i+1)*batch_size, len(y_mask_obj_keypoint_xy)),:,:]) for i in range (num_batches)]
+           y_mask_obj_keypoint_oks_batches = [(y_mask_obj_keypoint_oks[i*batch_size : min((i+1)*batch_size, len(y_mask_obj_keypoint_oks)),:,:]) for i in range (num_batches)]
+           y_mask_obj_nokeypoint_batches = [(y_mask_obj_nokeypoint[i*batch_size : min((i+1)*batch_size, len(y_mask_obj_nokeypoint)),:,:]) for i in range (num_batches)]
+
+
+
 #else: #batch size is 1
      
      
@@ -188,7 +214,38 @@ class myDataset(Dataset):
            return len(self.images)
 
 
+def loss_my_ase(imput, target):
+     diff = (imput - target)
+     if len(target.nonzero()) != 0:
+           ret = diff.abs().sum()/(len(target.nonzero()))
+     else:
+           ret = 0.0
+     return (ret)
                
+def loss_my_mse(imput, target):
+     diff = 1.0*(imput - target)
+     if len(target.nonzero()) != 0:
+           ret = diff.pow(2).sum()/(len(target.nonzero()))
+     else:
+           ret = 0.0
+     return (ret)
+
+def loss_my_mse_mag(imput, target):
+     diff = 10.0*(imput - target)
+     if len(target.nonzero()) != 0:
+           ret = diff.pow(2).sum()/(len(target.nonzero()))
+     else:
+           ret = 0.0
+     return (ret)
+
+def loss_my_mse_neg(imput, target):
+     diff = 2.0*(imput - target)
+     if len(target) != 0:
+           ret = diff.pow(2).sum()/(target.numel())
+     else:
+           ret = 0.0
+     return (ret)
+
 #Enable CUDA if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -197,7 +254,7 @@ if CUDA:
            print ("Using ", torch.cuda.device_count(), " GPUs to train")
            if checkpoint != 1:
                  dist.init_process_group(backend='nccl', init_method='tcp://127.0.0.1:9999', world_size=1, rank=0)
-                 model = nn.DataParallel(model, device_ids=[0,1])
+                 model = nn.DataParallel(model)
                  #sampler = torch.utils.data.distributed.DistributedSampler(dataset)
            model.to(device)
      else:
@@ -262,6 +319,7 @@ if not training:
            print ("No detections made")
            exit()
 
+
 ##########################
 ## Trainig Loop #########
 #########################
@@ -276,7 +334,7 @@ else:
 
      if checkpoint == 0:
            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-           scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[300,600,900,1200,1500,1800,2100,2400,2700,3000], gamma=0.5)
+           scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[300,600,900,1200,1500,1800,2100,2400,2700,3000], gamma=0.7)
            epoc = int(args.num_iter)
            start = 0
 
@@ -292,12 +350,12 @@ else:
      rnd_int = int(torch.randint(0,10000,(1,)).item())
      write_str = ''
 
-     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=2)
+     train_dataloader = DataLoader(dataset=dataset, batch_size = batch_size, shuffle=False, num_workers=0)
 
      for e in range(start, epoc): 
            
            for t in range(1):
-                 for b, (data, y_mask_obj, y_mask_noobj) in enumerate(zip(train_dataloader, y_mask_obj_batches, y_mask_noobj_batches)):
+                 for b, (data, y_mask_obj, y_mask_noobj, y_mask_obj_keypoint_xy, y_mask_obj_keypoint_oks, y_mask_obj_nokeypoint) in enumerate(zip(train_dataloader, y_mask_obj_batches, y_mask_noobj_batches, y_mask_obj_keypoint_xy_batches, y_mask_obj_keypoint_oks_batches, y_mask_obj_nokeypoint_batches)):
                        batch, label = data
                        batch, label = Variable(batch), Variable(label)
                        if CUDA:
@@ -305,9 +363,14 @@ else:
                              gt_pred1 = label.cuda()
                              y_mask_obj = y_mask_obj.cuda()
                              y_mask_noobj = y_mask_noobj.cuda()
+                             y_mask_obj_keypoint_xy = y_mask_obj_keypoint_xy.cuda()
+                             y_mask_obj_keypoint_oks = y_mask_obj_keypoint_oks.cuda()
+                             y_mask_obj_nokeypoint = y_mask_obj_nokeypoint.cuda()
                              #model = torch.nn.DataParallel(model).cuda()
-                       f=open('logs/training_'+str(rnd_int)+'.log', 'a+')
+                       if ckpt_save_dir is not None:
+                             f=open(str(ckpt_save_dir)+'/training_'+str(rnd_int)+'.log', 'a+')
                        y_pred1 = model(batch, CUDA)
+                       y_pred1[torch.isinf(y_pred1).nonzero()[:,0],torch.isinf(y_pred1).nonzero()[:,1],torch.isinf(y_pred1).nonzero()[:,2]] = 0.0
                        y_temp = y_pred1[:,:,0].clone()
                        y_pred1[:,:,0] = y_pred1[:,:,1]
                        y_pred1[:,:,1] = y_temp
@@ -320,9 +383,15 @@ else:
                              zero_tensor = zero_tensor.cuda()
                        gt_obj = gt_pred1[:,:,:] > 0.0000001
                        gt_noobj = gt_pred1[:,:,:] < 0
-
+ 
                        loss_mse = torch.nn.MSELoss()
-                       loss_xywh_obj = loss_mse(y_pred1_obj[:,:,0:4], gt_pred1[:,:,0:4])
+                       loss_mse2 = loss_my_mse#torch.nn.MSELoss()
+                       loss_mse2_mag = loss_my_mse_mag
+                       loss_mse_neg = loss_my_mse_neg
+                       loss_ase = loss_my_ase
+                       loss_obj_xy = loss_mse2(y_pred1_obj[:,:,0:2], gt_pred1[:,:,0:2])
+                       loss_obj_wh = loss_ase(y_pred1_obj[:,:,2:4], gt_pred1[:,:,2:4])
+                       loss_xywh_obj = loss_obj_xy + loss_obj_wh
 
                        #loss_wh_obj = loss_mse(torch.pow(torch.abs(y_pred1_obj[:,:,2:4]), 0.5), torch.pow(torch.abs(gt_pred1[:,:,2:4]), 0.5))
                        y_pred1_obj_box = y_pred1.new_empty([y_pred1_obj.shape[0], y_pred1_obj.shape[1], 4])
@@ -348,14 +417,37 @@ else:
 
                        iou = torch.mul(iou, (gt_pred1[:,:,4]>0.00001).float())
 
-                       loss_conf_obj = loss_mse(y_pred1_obj[:,:,4], iou)
-                       loss_conf_noobj = loss_mse(y_pred1_noobj[:,:,4], zero_tensor)
-                       loss_conf = 1.0*loss_conf_obj + 0.5*loss_conf_noobj
+                       loss_conf_obj = loss_mse2(y_pred1_obj[:,:,4], iou)
+                       loss_conf_noobj = loss_mse_neg(y_pred1_noobj[:,:,4], zero_tensor)
+                       loss_conf = 1.0*loss_conf_obj + 1.0*loss_conf_noobj
                        loss_ce = torch.nn.CrossEntropyLoss()
-                       loss_class = loss_mse(y_pred1[:,:,5+51:5+51+num_classes], gt_pred1[:,:,5+51:5+51+num_classes]) #Will update to CE Loss
-                       loss_keypoint = loss_mse(y_pred1[:,:,5:5+51], gt_pred1[:,:,5:5+51])
+                       loss_class = loss_mse2(y_pred1[:,:,5+51:5+51+num_classes], gt_pred1[:,:,5+51:5+51+num_classes]) #Will update to CE Loss
+
+                       y_pred1_obj_nokeypoint = torch.mul(y_pred1_obj,y_mask_obj_nokeypoint)
+                       gt_pred1_obj_nokeypoint = torch.mul(gt_pred1, y_mask_obj_nokeypoint)
+                       loss_obj_nokeypoint = loss_mse_neg(y_pred1_obj_nokeypoint, gt_pred1_obj_nokeypoint)
+
+                       y_pred1_obj_keypoint_xy = torch.mul(y_pred1_obj, y_mask_obj_keypoint_xy)
+                       gt_pred1_obj_keypoint_xy = torch.mul(gt_pred1, y_mask_obj_keypoint_xy)
+                       loss_obj_keypoint_xy = loss_ase(y_pred1_obj_keypoint_xy, gt_pred1_obj_keypoint_xy)
+        
+                       y_pred1_obj_keypoint_oks = torch.mul(y_pred1_obj, y_mask_obj_keypoint_oks)
+                       oks = torch.zeros(y_pred1.shape, requires_grad=False) 
+                       oks = compute_oks(y_pred1_obj_keypoint_xy, gt_pred1_obj_keypoint_xy, oks)
+                       #oks = torch.ones(y_pred1_obj_keypoint_oks.shape, requires_grad=True)
+                       if CUDA:
+                             oks = oks.cuda()
+                       oks = torch.mul(oks, y_mask_obj_keypoint_oks)
+                       #y_pred1_obj_keypoint_oks = torch.mul(y_pred1_obj_keypoint_oks, y_mask_obj_keypoint_oks)
+                       loss_obj_keypoint_oks = loss_mse2_mag(y_pred1_obj_keypoint_oks[:,:,7::3], oks[:,:,7::3])
                         
-                       loss = 5.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf + 1.0*loss_keypoint
+                       loss_keypoint = 3.0*loss_obj_keypoint_xy + 1.0*loss_obj_keypoint_oks + 1.0*loss_obj_nokeypoint
+                        
+                       loss = 3.0*loss_xywh_obj + 1.0*loss_class + 1.0*loss_conf + loss_keypoint
+                       if torch.isnan(loss).item() == 1.0:
+                             print ("Loss is nan")
+
+                       #loss /= y_pred1.shape[0]
                             
                        #y_pred1[gt_zeros[:,0],gt_zeros[:,1],:] *= 0
                        #all_zeros = torch.zeros(y_pred1.shape).cuda()
@@ -376,21 +468,103 @@ else:
                        pos_item=''
                        for p in pos_loc:
                              pos_item += str(y_pred1[0,p,4].item())+','
+                       o = 0
+                             
+
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[1,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[1,p,4].item())+','
+                             o = 1
+      
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[2,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[2,p,4].item())+','
+                             o = 2
+
  
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[3,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[3,p,4].item())+','
+                             o = 3
+
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[4,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[4,p,4].item())+','
+                             o = 4
+                       
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[5,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[5,p,4].item())+','
+                             o = 5
+
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[6,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[6,p,4].item())+','
+                             o = 6
+
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[7,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[7,p,4].item())+','
+                             o = 7
+                       
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[8,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[8,p,4].item())+','
+                             o = 8
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[9,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[9,p,4].item())+','
+                             o = 9
+                       if pos_loc.nelement()==0:
+                             pos_loc = gt_pred1[10,:,4].nonzero()
+                             pos_item=''
+                             for p in pos_loc:
+                                   pos_item += str(y_pred1[10,p,4].item())+','
+                             o = 10
+
+                       if len((gt_pred1[o,pos_loc[0],5:5+51]==1.0).nonzero())!=0:
+                             pos_item += 'oks,'
+                             k = (gt_pred1[o,pos_loc[0],5:5+51]==1.0).nonzero()[:,1][0].item()+5
+                             k_pos = ((gt_pred1[o,pos_loc[0],5:5+51]==1.0).nonzero()[:,1]+5).cpu().numpy()
+                             if len(np.setdiff1d(np.linspace(7,55,17),k_pos))==0:
+                                   k_neg = 7
+                             else:
+                                   k_neg = int(np.setdiff1d(np.linspace(7,55,17),k_pos)[0])
+                             for p in k_pos:
+                                   pos_item += str(y_pred1[o,k,p].item())+','
 
                       # b = list(model.parameters())[0].clone()
                       # with open("train.txt", "a") as myfile:
                       #       txt = str(e) + " " + str(loss.item()) + "\n"
                       #       myfile.write(txt)
-                       print (e,'-', b, loss.item(), loss_class.item(), y_pred1[0,10094,4].item(), y_pred1[0,pos_loc[0],4].item(), scheduler.get_lr()) #loss_obj.item(), loss_noobj.item(), loss_xy_obj.item(), loss_wh_obj.item(), loss_class.item())#y_pred1[:,:,:].nonzero().sum().data[0], diff.sum().data[0], torch.equal(a.data, b.data))
-                       write_str+=str(e)+','+str(b)+','+str(loss.item())+','+str(loss_class.item())+','+str(y_pred1[0,10094,4].item())+','+(pos_item)+ str(scheduler.get_lr())+'\n'
+                       print (e,'-', b, loss.item(), loss_xywh_obj.item(), loss_conf_obj.item(), loss_keypoint.item(), y_pred1[0,10094,4].item(), 'iou:', iou[o,pos_loc[0]].item(), y_pred1[o,pos_loc[0],4].item(), 'oks:', oks[o,pos_loc[0],k].item(), y_pred1[o,pos_loc[0],k].item(), y_pred1[o,pos_loc[0],k_neg].item(), scheduler.get_lr()) 
+                       write_str+=str(e)+','+str(b)+','+str(loss.item())+','+str(loss_class.item())+','+str(loss_keypoint.item())+','+str(y_pred1[0,10094,4].item())+','+(pos_item)+ str(scheduler.get_lr())+'\n'
           # print ("Epoc {}".format(e))
            scheduler.step()
            if ckpt_save_dir is not None:
-                 if e % 300 == 0:
+                 if e % 300 == 2:
+                        #torch.save({'model_state_dict':model.module.state_dict()},' {}/batch_model_{}.pb'.format(ckpt_save_dir, e))
                        torch.save({'epoch': e, 'model_state_dict':model.state_dict(), 'optimizer_state_dict':optimizer.state_dict(), 'scheduler_state_dict':scheduler.state_dict(), 'loss':loss}, '{}/batch_model_{}.pb'.format(ckpt_save_dir, e))
                  
-           if e % 10 == 0:      
+           if e % 10 == 0 and ckpt_save_dir is not None:      
                  f.write(write_str)
                  write_str=''
                  f.close()
@@ -452,16 +626,29 @@ scaling_factor = torch.min(inp_dim/im_dim_list,1)[0].view(-1,1)
 
 output[:,[1,3]] -= (inp_dim - scaling_factor*im_dim_list[:,0].view(-1,1))/2
 output[:,[2,4]] -= (inp_dim - scaling_factor*im_dim_list[:,1].view(-1,1))/2
+output[:,6:57:3] -= (inp_dim - scaling_factor*im_dim_list[:,0].view(-1,1))/2
+output[:,7:58:3] -= (inp_dim - scaling_factor*im_dim_list[:,1].view(-1,1))/2
 
 output[:,1:5] /= scaling_factor
 
 for i in range(output.shape[0]):
      output[i, [1,3]] = torch.clamp(output[i, [1,3]], 0.0, im_dim_list[i,0])
      output[i, [2,4]] = torch.clamp(output[i, [2,4]], 0.0, im_dim_list[i,1])
+     output[i, 6:57:3] = torch.clamp(output[i, 6:57:3], 0.0, im_dim_list[i,0])
+     output[i, 7:58:3] = torch.clamp(output[i, 7:58:3], 0.0, im_dim_list[i,1])
+
+
 
 output_recast = time.time()
 class_load = time.time()
 colors = pkl.load(open("pallete", "rb"))
+
+
+font                   = cv2.FONT_HERSHEY_SIMPLEX
+fontScale              = 0.4
+fontColor              = (255,255,255)
+lineType               = 1
+
 
 
 def write_fn(x, results):
@@ -476,6 +663,11 @@ def write_fn(x, results):
     c2 = c1[0] + t_size[0] + 3, c1[1] + t_size[1] + 4
     cv2.rectangle(img, c1, c2,color, -1)
     cv2.putText(img, label, (c1[0], c1[1] + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 1, [225,255,255], 1);
+    det2=x[6:]
+    for j in range(0,51,3):
+           if det2[j+2] > 0.7:
+                 cv2.circle(img, (det2[j],det2[j+1]), 3, (0,255,0))
+                 cv2.putText(img, "{}".format(int(j/3)), (det2[j],det2[j+1]), font, fontScale, fontColor, lineType)
     return img
 
 
